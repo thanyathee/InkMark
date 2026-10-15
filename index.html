@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="InkMark">
+  <meta name="theme-color" content="#0b3d91">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <title>InkMark</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">InkMark <span id="count" class="count"></span></div>
+    <div class="top-actions">
+      <button id="clearBtn" class="ghost" hidden>ล้างทั้งหมด</button>
+      <label class="btn primary">+ เพิ่มรูป<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="empty" class="empty">
+      <div class="empty-mark">#</div>
+      <h1>เลือกรูปพร้อมกันหลายรูป</h1>
+      <p>ปรับขนาดให้เท่ากัน · ปรับแสงสีอัตโนมัติ · ใส่ลายน้ำ #TISCOFOUNDATION</p>
+      <label class="btn primary big">เลือกรูปจากคลังภาพ<input id="fileInput2" type="file" accept="image/*" multiple hidden></label>
+      <p class="hint">รูปถูกประมวลผลในเครื่องนี้เท่านั้น ไม่มีการอัปโหลดไปที่ใด</p>
+    </section>
+    <p id="gridHint" class="grid-hint" hidden>แตะที่รูปเพื่อเลื่อนตำแหน่งกรอบ หรือปรับแสงสีเฉพาะรูป</p>
+    <div id="grid" class="grid"></div>
+  </main>
+
+  <!-- แผงตั้งค่า -->
+  <section id="sheet" class="sheet" hidden>
+    <div class="sheet-head">
+      <strong id="sheetTitle"></strong>
+      <button id="sheetClose" class="ghost small">เสร็จ</button>
+    </div>
+
+    <div class="pane" data-pane="size">
+      <p class="label">รูปแบบ</p>
+      <div class="seg wrap" id="modeSeg"></div>
+      <p class="label" id="sizeLabel">ความกว้าง (px)</p>
+      <div class="seg" id="sizeSeg"></div>
+      <p class="hint" id="sizeHint"></p>
+    </div>
+
+    <div class="pane" data-pane="tone">
+      <label class="switch-row">
+        <span><strong>ปรับอัตโนมัติ</strong><br><small>แก้รูปมืด และให้โทนทั้งชุดใกล้กัน (ปรับแบบเบาๆ)</small></span>
+        <input type="checkbox" id="autoToggle" class="switch">
+      </label>
+      <p class="label">ปรับเพิ่มทั้งชุด</p>
+      <div id="globalSliders" class="sliders"></div>
+      <button id="globalReset" class="ghost small">รีเซ็ตแถบเลื่อน</button>
+      <p class="hint">ต้องการปรับเฉพาะรูปไหน ให้แตะที่รูปนั้น</p>
+    </div>
+
+    <div class="pane" data-pane="wm">
+      <label class="switch-row">
+        <span><strong>ใส่ลายน้ำ</strong><br><small>มุมขวาล่าง ห่างขอบเท่ากัน ขนาดอัตโนมัติตามรูป</small></span>
+        <input type="checkbox" id="wmToggle" class="switch">
+      </label>
+      <p class="label">ข้อความ</p>
+      <input id="wmText" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <p class="label">ขนาด</p>
+      <div class="seg" id="wmSizeSeg"></div>
+      <p class="label">สี</p>
+      <div class="seg wrap" id="wmColorSeg"></div>
+      <p class="label">ความทึบ <span id="wmOpacityVal" class="muted"></span></p>
+      <input id="wmOpacity" type="range" min="40" max="100" step="5">
+    </div>
+
+    <div class="pane" data-pane="export">
+      <p id="exportSummary" class="summary"></p>
+      <button id="exportBtn" class="btn primary block">เตรียมไฟล์ทั้งหมด</button>
+      <div id="exportReady" hidden>
+        <button id="shareBtn" class="btn primary block">บันทึกลงคลังรูป / แชร์</button>
+        <p class="hint">กดแล้วเลือก <strong>"บันทึกรูปภาพ" (Save Images)</strong> รูปทั้งหมดจะเข้าแอปรูปภาพ</p>
+        <button id="downloadBtn" class="ghost small">หรือดาวน์โหลดเป็นไฟล์</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="tabbar" id="tabbar" hidden>
+    <button data-sheet="size"><span class="ico">▣</span><span>ขนาด</span></button>
+    <button data-sheet="tone"><span class="ico">☀︎</span><span>แสงสี</span></button>
+    <button data-sheet="wm"><span class="ico">#</span><span>ลายน้ำ</span></button>
+    <button data-sheet="export" class="accent"><span class="ico">↓</span><span>บันทึก</span></button>
+  </nav>
+
+  <!-- แก้ไขรายรูป -->
+  <div id="editor" class="editor" hidden>
+    <div class="ed-head">
+      <button id="edClose" class="ghost">✕ ปิด</button>
+      <span id="edTitle" class="ed-title"></span>
+      <span class="ed-nav">
+        <button id="edPrev" class="ghost" aria-label="รูปก่อนหน้า">‹</button>
+        <button id="edNext" class="ghost" aria-label="รูปถัดไป">›</button>
+      </span>
+    </div>
+    <div class="ed-body">
+      <div id="edCropWrap">
+        <p class="label">ลากกรอบเพื่อเลือกตำแหน่ง</p>
+        <div class="crop-box"><canvas id="edCrop"></canvas></div>
+        <div class="row">
+          <span class="muted">ซูม</span>
+          <input id="edZoom" type="range" min="1" max="3" step="0.01">
+          <button id="edCropReset" class="ghost small">กึ่งกลาง</button>
+        </div>
+      </div>
+      <p class="label">ผลลัพธ์ <span class="muted">— กดค้างที่รูปเพื่อดูก่อนปรับแสงสี</span></p>
+      <div class="preview-box"><canvas id="edPreview"></canvas></div>
+      <p class="label">ปรับแสงสีเฉพาะรูปนี้</p>
+      <div id="edSliders" class="sliders"></div>
+      <div class="row">
+        <button id="edToneReset" class="ghost small">รีเซ็ตแสงสีรูปนี้</button>
+        <button id="edRemove" class="ghost small danger">ลบรูปนี้</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="progress" class="progress" hidden>
+    <div class="progress-card">
+      <p id="progressText"></p>
+      <div class="bar"><div id="progressBar"></div></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
