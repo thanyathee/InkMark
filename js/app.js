@@ -1,7 +1,7 @@
 import { SIZE_MODES, SIZES, isCropMode, outputSize, cropFrac } from './crop.js';
 import { TONE_SLIDERS, batchTarget } from './tone.js';
 import { WM_COLORS } from './watermark.js';
-import { prepareItem, loadSource, renderImage, toBlob } from './render.js';
+import { prepareItem, loadSource, loadOriginal, renderImage, toBlob } from './render.js';
 
 const $ = (s) => document.querySelector(s);
 const PREVIEW_MAX = 520;
@@ -270,7 +270,12 @@ segment(
 function updateSizeLabels() {
   $('#sizeLabel').textContent = S.mode === 'h' ? 'ความสูง (px)' : 'ความกว้าง (px)';
   const crop = isCropMode(S.mode);
-  if (crop) {
+  const orig = S.mode === 'orig';
+  $('#sizeLabel').hidden = orig;
+  $('#sizeSeg').hidden = orig;
+  if (orig) {
+    $('#sizeHint').textContent = 'ไม่ตัด ไม่ย่อ · ทุกรูปคงขนาดเดิมของตัวเอง (ยังใส่ลายน้ำและปรับแสงสีได้)';
+  } else if (crop) {
     const o = outputSize(S.mode, S.size, 1, 1);
     $('#sizeHint').textContent = `ทุกรูปจะเป็น ${o.w}×${o.h} px · แตะที่รูปเพื่อเลื่อนกรอบให้ไม่ค่อนซ้าย/ขวา/บน/ล่าง`;
   } else {
@@ -530,7 +535,12 @@ function updateExportSummary() {
   if (!n) return;
   const first = state.items[0];
   const o = outputSize(S.mode, S.size, first.w, first.h);
-  const dims = isCropMode(S.mode) ? `${o.w}×${o.h} px` : `${S.mode === 'w' ? 'กว้าง' : 'สูง'} ${S.size} px`;
+  const dims =
+    S.mode === 'orig'
+      ? 'ขนาดเดิมของแต่ละรูป'
+      : isCropMode(S.mode)
+        ? `${o.w}×${o.h} px`
+        : `${S.mode === 'w' ? 'กว้าง' : 'สูง'} ${S.size} px`;
   $('#exportSummary').innerHTML = `<strong>${n} รูป</strong> · ${dims} · JPEG`;
 }
 
@@ -555,7 +565,7 @@ $('#exportBtn').addEventListener('click', async () => {
       progress('กำลังสร้างไฟล์', i, items.length);
       await nextFrame();
       const it = items[i];
-      const src = await loadSource(it.blob);
+      const src = S.mode === 'orig' ? await loadOriginal(it) : await loadSource(it.blob);
       const canvas = renderImage(src, it, S, { target: tgt });
       const blob = await toBlob(canvas, 'image/jpeg', JPEG_QUALITY);
       canvas.width = 0;

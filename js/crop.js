@@ -6,6 +6,7 @@ export const SIZE_MODES = [
   { id: '16:9', label: '16:9 กว้าง', ratio: 16 / 9 },
   { id: 'w', label: 'กว้างเท่ากัน' },
   { id: 'h', label: 'สูงเท่ากัน' },
+  { id: 'orig', label: 'ต้นฉบับ' },
 ];
 
 export const SIZES = [1080, 1440, 2048];
@@ -22,6 +23,7 @@ export function isCropMode(id) {
 export function outputSize(id, size, sw, sh) {
   const m = modeOf(id);
   if (m.ratio) return { w: size, h: Math.round(size / m.ratio) };
+  if (m.id === 'orig') return { w: sw, h: sh };
   if (m.id === 'w') return { w: size, h: Math.round((size * sh) / sw) };
   return { w: Math.round((size * sw) / sh), h: size };
 }

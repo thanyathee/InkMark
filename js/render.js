@@ -6,6 +6,8 @@ import { drawWatermark } from './watermark.js';
 // Safari บน iPhone จำกัดขนาด canvas (~16 ล้านพิกเซล) จึงเก็บต้นฉบับไว้ไม่เกินนี้
 const SOURCE_MAX = 3072;
 const THUMB_MAX = 720;
+// เพดานพิกเซลของ canvas บน iPhone
+const CANVAS_MAX_PX = 16e6;
 
 let nextId = 1;
 
@@ -70,6 +72,7 @@ export async function prepareItem(file) {
     const item = {
       id: nextId++,
       name: file.name || `photo-${nextId}.jpg`,
+      file, // ไฟล์ต้นฉบับ ใช้ตอนบันทึกโหมด "ต้นฉบับ" ให้ได้ขนาดเดิมเต็มๆ
       blob,
       w: full.width,
       h: full.height,
@@ -85,6 +88,21 @@ export async function prepareItem(file) {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// โหมดต้นฉบับ: เปิดจากไฟล์เดิม (ขนาดเต็ม) ถ้าไม่ได้ค่อยใช้ตัวที่เก็บไว้
+export async function loadOriginal(item) {
+  if (item.file) {
+    const url = URL.createObjectURL(item.file);
+    try {
+      return await loadImage(url);
+    } catch {
+      /* ใช้ blob แทน */
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  return loadSource(item.blob);
 }
 
 export async function loadSource(blob) {
@@ -110,6 +128,11 @@ export function renderImage(src, item, settings, opts = {}) {
   const out = outputSize(settings.mode, settings.size, sw, sh);
   let W = out.w;
   let H = out.h;
+  if (W * H > CANVAS_MAX_PX) {
+    const s = Math.sqrt(CANVAS_MAX_PX / (W * H));
+    W = Math.floor(W * s);
+    H = Math.floor(H * s);
+  }
   if (opts.maxSide) {
     const s = Math.min(1, opts.maxSide / Math.max(W, H));
     W = Math.max(1, Math.round(W * s));
