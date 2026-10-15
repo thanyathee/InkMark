@@ -1,5 +1,5 @@
 // ใช้เน็ตก่อน (ได้เวอร์ชันล่าสุดเสมอ) ถ้าออฟไลน์ค่อยใช้ไฟล์ที่เก็บไว้
-const CACHE = 'inkmark-v2';
+const CACHE = 'inkmark-v3';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/crop.js', 'js/tone.js', 'js/watermark.js', 'js/render.js',

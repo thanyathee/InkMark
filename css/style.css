@@ -93,8 +93,13 @@ body.sheet-open main { padding-bottom: calc(58vh + var(--safe-b)); }
   position: absolute; left: 6px; top: 6px; font-size: 12px; font-weight: 700;
   background: rgba(0,0,0,0.55); color: #fff; padding: 1px 7px; border-radius: 99px;
 }
+.tile .del {
+  position: absolute; right: 4px; top: 4px; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 14px; font-weight: 700; line-height: 1;
+  background: rgba(0,0,0,0.6); color: #fff; border: 1.5px solid rgba(255,255,255,0.8);
+}
 .tile .edited {
-  position: absolute; right: 6px; top: 6px; font-size: 11px;
+  position: absolute; left: 6px; bottom: 6px; font-size: 11px;
   background: var(--primary); color: #fff; padding: 1px 7px; border-radius: 99px;
 }
 
@@ -137,6 +142,15 @@ body.sheet-open main { padding-bottom: calc(58vh + var(--safe-b)); }
   font-size: 14px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 .seg button.on { background: var(--primary); color: var(--primary-text); }
+.pos-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  width: 132px; aspect-ratio: 4 / 5; padding: 6px; border-radius: 12px;
+  background: var(--chip); border: 1px solid var(--line);
+}
+.pos-grid button { border-radius: 8px; display: grid; place-items: center; }
+.pos-grid button i { width: 22px; height: 6px; border-radius: 3px; background: var(--muted); opacity: 0.35; }
+.pos-grid button.on { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.pos-grid button.on i { background: var(--primary); opacity: 1; }
 .dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(128,128,128,0.6); display: inline-block; }
 .seg input[type=color] { width: 22px; height: 22px; border: 0; padding: 0; background: none; }
 

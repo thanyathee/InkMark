@@ -1,5 +1,6 @@
-// ลายน้ำมุมขวาล่าง: ขนาดและระยะขอบคิดจาก "ด้านสั้น" ของภาพ ทุกรูปจึงได้สัดส่วนเดียวกัน
-// ระยะขอบขวา = ระยะขอบล่าง (วัดจากขอบตัวอักษรจริง ไม่ใช่กล่องข้อความ)
+// ลายน้ำ: ขนาดและระยะขอบคิดจาก "ด้านสั้น" ของภาพ ทุกรูปจึงได้สัดส่วนเดียวกัน
+// ระยะขอบแนวนอน = ระยะขอบแนวตั้ง (วัดจากขอบตัวอักษรจริง ไม่ใช่กล่องข้อความ)
+// ตำแหน่ง o.pos = แนวตั้ง (t/m/b) + แนวนอน (l/c/r) เช่น 'br' = ขวาล่าง
 
 export const WM_SIZES = { S: 0.026, M: 0.033, L: 0.042 };
 export const WM_MARGIN = 0.035;
@@ -35,8 +36,11 @@ export function drawWatermark(ctx, W, H, o) {
   const right = m.actualBoundingBoxRight || m.width;
   const asc = m.actualBoundingBoxAscent || fs * 0.72;
   const desc = m.actualBoundingBoxDescent || 0;
-  const x = W - margin - right;
-  const y = H - margin - desc;
+  const pos = o.pos || 'br';
+  const tw = left + right;
+  const th = asc + desc;
+  const x = pos[1] === 'l' ? margin + left : pos[1] === 'c' ? (W - tw) / 2 + left : W - margin - right;
+  const y = pos[0] === 't' ? margin + asc : pos[0] === 'm' ? (H - th) / 2 + asc : H - margin - desc;
 
   let color = o.color === 'custom' ? o.custom : WM_COLORS[o.color];
   if (!color) {

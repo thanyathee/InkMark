@@ -63,11 +63,13 @@
 
     <div class="pane" data-pane="wm">
       <label class="switch-row">
-        <span><strong>ใส่ลายน้ำ</strong><br><small>มุมขวาล่าง ห่างขอบเท่ากัน ขนาดอัตโนมัติตามรูป</small></span>
+        <span><strong>ใส่ลายน้ำ</strong><br><small>ห่างขอบเท่ากัน ขนาดอัตโนมัติตามรูป</small></span>
         <input type="checkbox" id="wmToggle" class="switch">
       </label>
       <p class="label">ข้อความ</p>
       <input id="wmText" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <p class="label">ตำแหน่ง</p>
+      <div class="pos-grid" id="wmPosGrid" aria-label="ตำแหน่งลายน้ำ"></div>
       <p class="label">ขนาด</p>
       <div class="seg" id="wmSizeSeg"></div>
       <p class="label">สี</p>

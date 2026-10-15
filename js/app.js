@@ -14,7 +14,7 @@ const DEFAULTS = {
   size: 1080,
   auto: true,
   global: { b: 0, c: 0, v: 0, w: 0 },
-  wm: { on: true, text: '#TISCOFOUNDATION', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
+  wm: { on: true, text: '#TISCOFOUNDATION', pos: 'br', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
 };
 
 const state = {
@@ -124,7 +124,16 @@ function rebuildGrid() {
     const badge = document.createElement('span');
     badge.className = 'edited';
     badge.textContent = 'ปรับแล้ว';
-    el.append(canvas, num, badge);
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.type = 'button';
+    del.setAttribute('aria-label', 'ลบรูปนี้');
+    del.textContent = '✕';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeItem(it);
+    });
+    el.append(canvas, num, badge, del);
     el.addEventListener('click', () => openEditor(state.items.indexOf(it)));
     grid.append(el);
     tiles.set(it.id, { el, canvas, badge });
@@ -137,6 +146,16 @@ function rebuildGrid() {
   $('#count').textContent = has ? `${state.items.length} รูป` : '';
   updateExportSummary();
   scheduleRender();
+}
+
+function removeItem(it) {
+  const i = state.items.indexOf(it);
+  if (i < 0) return;
+  it.thumb.width = 0;
+  state.items.splice(i, 1);
+  invalidateExport();
+  rebuildGrid();
+  if (!state.items.length) closeSheet();
 }
 
 function isEdited(it) {
@@ -311,6 +330,15 @@ $('#wmText').addEventListener('input', (e) => {
   S.wm.text = e.target.value;
   settingsChanged();
 });
+segment(
+  $('#wmPosGrid'),
+  ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'].map((v) => ({ value: v, html: '<i></i>' })),
+  () => S.wm.pos,
+  (v) => {
+    S.wm.pos = v;
+    settingsChanged();
+  },
+);
 segment(
   $('#wmSizeSeg'),
   [
@@ -497,10 +525,7 @@ $('#edToneReset').addEventListener('click', () => {
 });
 $('#edRemove').addEventListener('click', () => {
   const i = state.editIndex;
-  state.items[i].thumb.width = 0;
-  state.items.splice(i, 1);
-  invalidateExport();
-  rebuildGrid();
+  removeItem(state.items[i]);
   if (!state.items.length) return closeEditor();
   state.editIndex = Math.min(i, state.items.length - 1);
   updateEditor();
