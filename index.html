@@ -28,6 +28,7 @@
       <div class="empty-mark">#</div>
       <h1>เลือกรูปพร้อมกันหลายรูป</h1>
       <p>ปรับขนาดให้เท่ากัน · ปรับแสงสีอัตโนมัติ · ใส่ลายน้ำ #TISCOFOUNDATION</p>
+      <p class="desk-only drop-hint">หรือลากไฟล์รูปมาวางในหน้านี้</p>
       <label class="btn primary big">เลือกรูปจากคลังภาพ<input id="fileInput2" type="file" accept="image/*" multiple hidden></label>
       <p class="hint">รูปถูกประมวลผลในเครื่องนี้เท่านั้น ไม่มีการอัปโหลดไปที่ใด</p>
       <p class="hint" id="version"></p>
@@ -44,6 +45,7 @@
     </div>
 
     <div class="pane" data-pane="size">
+      <h3 class="pane-title">ขนาดรูป</h3>
       <p class="label">รูปแบบ</p>
       <div class="seg wrap" id="modeSeg"></div>
       <p class="label" id="sizeLabel">ความกว้าง (px)</p>
@@ -52,6 +54,7 @@
     </div>
 
     <div class="pane" data-pane="tone">
+      <h3 class="pane-title">แสงและสี</h3>
       <label class="switch-row">
         <span><strong>ปรับอัตโนมัติ</strong><br><small>แก้รูปมืด และให้โทนทั้งชุดใกล้กัน (ปรับแบบเบาๆ)</small></span>
         <input type="checkbox" id="autoToggle" class="switch">
@@ -63,6 +66,7 @@
     </div>
 
     <div class="pane" data-pane="wm">
+      <h3 class="pane-title">ลายน้ำ</h3>
       <label class="switch-row">
         <span><strong>ใส่ลายน้ำ</strong><br><small>ห่างขอบเท่ากัน ขนาดอัตโนมัติตามรูป</small></span>
         <input type="checkbox" id="wmToggle" class="switch">
@@ -80,12 +84,14 @@
     </div>
 
     <div class="pane" data-pane="export">
+      <h3 class="pane-title">บันทึก</h3>
       <p id="exportSummary" class="summary"></p>
       <button id="exportBtn" class="btn primary block">เตรียมไฟล์ทั้งหมด</button>
       <div id="exportReady" hidden>
-        <button id="shareBtn" class="btn primary block">บันทึกลงคลังรูป / แชร์</button>
-        <p class="hint">กดแล้วเลือก <strong>"บันทึกรูปภาพ" (Save Images)</strong> รูปทั้งหมดจะเข้าแอปรูปภาพ</p>
-        <button id="downloadBtn" class="ghost small">หรือดาวน์โหลดเป็นไฟล์</button>
+        <button id="shareBtn" class="btn primary block touch-only">บันทึกลงคลังรูป / แชร์</button>
+        <p class="hint touch-only">กดแล้วเลือก <strong>"บันทึกรูปภาพ" (Save Images)</strong> รูปทั้งหมดจะเข้าแอปรูปภาพ</p>
+        <button id="zipBtn" class="btn primary block desk-only">ดาวน์โหลดทั้งหมด (.zip)</button>
+        <button id="downloadBtn" class="ghost small">หรือดาวน์โหลดแยกทีละไฟล์</button>
       </div>
     </div>
   </section>
@@ -108,6 +114,7 @@
       </span>
     </div>
     <div class="ed-body">
+     <div class="ed-media">
       <div id="edCropWrap">
         <p class="label">ลากกรอบเพื่อเลือกตำแหน่ง</p>
         <div class="crop-box"><canvas id="edCrop"></canvas></div>
@@ -117,14 +124,20 @@
           <button id="edCropReset" class="ghost small">กึ่งกลาง</button>
         </div>
       </div>
-      <p class="label">ผลลัพธ์ <span class="muted">— กดค้างที่รูปเพื่อดูก่อนปรับแสงสี</span></p>
-      <div class="preview-box"><canvas id="edPreview"></canvas></div>
+      <div class="ed-result">
+        <p class="label">ผลลัพธ์ <span class="muted">— กดค้างที่รูปเพื่อดูก่อนปรับแสงสี</span></p>
+        <div class="preview-box"><canvas id="edPreview"></canvas></div>
+      </div>
+     </div>
+     <div class="ed-controls">
       <p class="label">ปรับแสงสีเฉพาะรูปนี้</p>
       <div id="edSliders" class="sliders"></div>
       <div class="row">
         <button id="edToneReset" class="ghost small">รีเซ็ตแสงสีรูปนี้</button>
         <button id="edRemove" class="ghost small danger">ลบรูปนี้</button>
       </div>
+      <p class="hint desk-only">คีย์ลัด: ← → เปลี่ยนรูป · Esc ปิด</p>
+     </div>
     </div>
   </div>
 
@@ -135,6 +148,7 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
+  <div id="dropZone" class="drop-zone" hidden><div>วางรูปที่นี่</div></div>
   <button id="updateBar" class="update-bar" hidden>มีเวอร์ชันใหม่ · แตะเพื่อโหลด (รูปที่เลือกไว้จะหายไป)</button>
 
   <script type="module" src="js/app.js"></script>

@@ -1,6 +1,7 @@
 import { SIZE_MODES, SIZES, isCropMode, outputSize, cropFrac } from './crop.js';
 import { TONE_SLIDERS, batchTarget } from './tone.js';
 import { WM_COLORS } from './watermark.js';
+import { makeZip } from './zip.js';
 import { prepareItem, loadSource, loadOriginal, renderImage, toBlob } from './render.js';
 
 const $ = (s) => document.querySelector(s);
@@ -8,7 +9,9 @@ const PREVIEW_MAX = 520;
 const EDITOR_MAX = 1000;
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
+// จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
+const desktop = window.matchMedia('(min-width: 1024px)');
 
 const DEFAULTS = {
   mode: '4:5',
@@ -49,6 +52,7 @@ function saveSettings() {
 }
 function settingsChanged() {
   saveSettings();
+  updateExportSummary();
   invalidateExport();
   scheduleRender();
 }
@@ -144,6 +148,7 @@ function rebuildGrid() {
   $('#gridHint').hidden = !has;
   $('#tabbar').hidden = !has;
   $('#clearBtn').hidden = !has;
+  document.body.classList.toggle('has-items', has);
   $('#count').textContent = has ? `${state.items.length} รูป` : '';
   updateExportSummary();
   scheduleRender();
@@ -435,7 +440,7 @@ function queueEditorRender() {
 function fitCanvas(canvas, w, h) {
   const box = canvas.parentElement;
   const maxW = box.clientWidth - 16;
-  const maxH = window.innerHeight * 0.42;
+  const maxH = window.innerHeight * (desktop.matches ? 0.72 : 0.42);
   const s = Math.min(maxW / w, maxH / h);
   canvas.style.width = `${Math.round(w * s)}px`;
   canvas.style.height = `${Math.round(h * s)}px`;
@@ -551,6 +556,37 @@ $('#edNext').addEventListener('click', () => {
   renderTile(cur());
   openEditor(state.editIndex + 1);
 });
+document.addEventListener('keydown', (e) => {
+  if (state.editIndex < 0 || e.target.tagName === 'INPUT') return;
+  if (e.key === 'Escape') closeEditor();
+  else if (e.key === 'ArrowLeft' && state.editIndex > 0) $('#edPrev').click();
+  else if (e.key === 'ArrowRight' && state.editIndex < state.items.length - 1) $('#edNext').click();
+});
+
+// ลากไฟล์มาวาง (คอม)
+let dragDepth = 0;
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+window.addEventListener('dragenter', (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  $('#dropZone').hidden = false;
+});
+window.addEventListener('dragover', (e) => hasFiles(e) && e.preventDefault());
+window.addEventListener('dragleave', () => {
+  if (--dragDepth <= 0) {
+    dragDepth = 0;
+    $('#dropZone').hidden = true;
+  }
+});
+window.addEventListener('drop', (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  $('#dropZone').hidden = true;
+  addFiles(e.dataTransfer.files);
+});
+
 window.addEventListener('resize', () => {
   if (state.editIndex >= 0) queueEditorRender();
 });
@@ -608,7 +644,25 @@ $('#exportBtn').addEventListener('click', async () => {
   state.exported = files;
   $('#exportBtn').hidden = true;
   $('#exportReady').hidden = false;
+  if (desktop.matches) downloadZip(files);
 });
+
+function zipName() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `InkMark_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.zip`;
+}
+async function downloadZip(files) {
+  const zip = await makeZip(files);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(zip);
+  a.download = zipName();
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+$('#zipBtn').addEventListener('click', () => state.exported && downloadZip(state.exported));
 
 // ขั้นที่ 2: แชร์ (ต้องกดจากผู้ใช้โดยตรง Safari จึงยอมเปิดหน้าต่างแชร์)
 $('#shareBtn').addEventListener('click', async () => {
