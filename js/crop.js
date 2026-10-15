@@ -19,6 +19,11 @@ export function isCropMode(id) {
   return !!modeOf(id).ratio;
 }
 
+// เลือกตำแหน่ง/ซูมรายรูปได้ไหม (โหมดต้นฉบับซูมได้ โดยคงสัดส่วนเดิม)
+export function canFrame(id) {
+  return isCropMode(id) || id === 'orig';
+}
+
 // ขนาดไฟล์ผลลัพธ์ (px)
 export function outputSize(id, size, sw, sh) {
   const m = modeOf(id);
@@ -32,12 +37,13 @@ export function outputSize(id, size, sw, sh) {
 // item.fx / item.fy = ตำแหน่งกรอบ (0 = ชิดซ้าย/บน, 1 = ชิดขวา/ล่าง), item.zoom >= 1
 export function cropFrac(id, sw, sh, item) {
   const m = modeOf(id);
-  if (!m.ratio) return { x: 0, y: 0, w: 1, h: 1 };
   const S = sw / sh;
+  const ratio = m.ratio || (m.id === 'orig' ? S : 0);
+  if (!ratio) return { x: 0, y: 0, w: 1, h: 1 };
   let cw = 1;
   let ch = 1;
-  if (S > m.ratio) cw = m.ratio / S;
-  else ch = S / m.ratio;
+  if (S > ratio) cw = ratio / S;
+  else ch = S / ratio;
   const z = item.zoom || 1;
   cw /= z;
   ch /= z;

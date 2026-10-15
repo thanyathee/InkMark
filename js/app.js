@@ -1,15 +1,15 @@
-import { SIZE_MODES, SIZES, isCropMode, outputSize, cropFrac } from './crop.js';
+import { SIZE_MODES, SIZES, isCropMode, canFrame, outputSize, cropFrac } from './crop.js';
 import { TONE_SLIDERS, batchTarget } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
-import { prepareItem, loadSource, loadOriginal, renderImage, toBlob } from './render.js';
+import { prepareItem, loadOriginal, renderImage, toBlob } from './render.js';
 
 const $ = (s) => document.querySelector(s);
 const PREVIEW_MAX = 520;
 const EDITOR_MAX = 1000;
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -299,14 +299,16 @@ function updateSizeLabels() {
   $('#sizeLabel').hidden = orig;
   $('#sizeSeg').hidden = orig;
   if (orig) {
-    $('#sizeHint').textContent = 'ไม่ตัด ไม่ย่อ · ทุกรูปคงขนาดเดิมของตัวเอง (ยังใส่ลายน้ำและปรับแสงสีได้)';
+    $('#sizeHint').textContent = 'ไม่ตัด ไม่ย่อ · ทุกรูปคงขนาดเดิม · อยากได้เฉพาะบางส่วน แตะที่รูปแล้วซูม (สัดส่วนเท่าเดิม ไม่ขยายภาพ)';
   } else if (crop) {
     const o = outputSize(S.mode, S.size, 1, 1);
     $('#sizeHint').textContent = `ทุกรูปจะเป็น ${o.w}×${o.h} px · แตะที่รูปเพื่อเลื่อนกรอบให้ไม่ค่อนซ้าย/ขวา/บน/ล่าง`;
   } else {
     $('#sizeHint').textContent = `ไม่ตัดรูป · ย่อให้${S.mode === 'w' ? 'ความกว้าง' : 'ความสูง'}เท่ากันที่ ${S.size} px อีกด้านตามสัดส่วนเดิม`;
   }
-  $('#gridHint').textContent = crop
+  $('#gridHint').textContent = orig
+    ? 'แตะที่รูปเพื่อซูมเลือกเฉพาะส่วน หรือปรับแสงสีเฉพาะรูป'
+    : crop
     ? 'แตะที่รูปเพื่อเลื่อนตำแหน่งกรอบ หรือปรับแสงสีเฉพาะรูป'
     : 'แตะที่รูปเพื่อปรับแสงสีเฉพาะรูป';
 }
@@ -423,7 +425,9 @@ function updateEditor() {
   $('#edTitle').textContent = `${state.editIndex + 1}/${state.items.length} · ${it.name}`;
   $('#edPrev').disabled = state.editIndex === 0;
   $('#edNext').disabled = state.editIndex === state.items.length - 1;
-  $('#edCropWrap').hidden = !isCropMode(S.mode);
+  $('#edCropWrap').hidden = !canFrame(S.mode);
+  $('#edCropLabel').textContent =
+    S.mode === 'orig' ? 'ซูม แล้วลากกรอบเลือกส่วนที่ต้องการ (สัดส่วนเท่าต้นฉบับ)' : 'ลากกรอบเพื่อเลือกตำแหน่ง';
   $('#edZoom').value = it.zoom;
   refreshEdSliders();
   drawCrop();
@@ -449,7 +453,7 @@ function fitCanvas(canvas, w, h) {
 
 function drawCrop() {
   const it = cur();
-  if (!it || !isCropMode(S.mode)) return;
+  if (!it || !canFrame(S.mode)) return;
   const t = it.thumb;
   const c = ed.crop;
   const s = fitCanvas(c, t.width, t.height);
@@ -604,7 +608,7 @@ function updateExportSummary() {
   const o = outputSize(S.mode, S.size, first.w, first.h);
   const dims =
     S.mode === 'orig'
-      ? 'ขนาดเดิมของแต่ละรูป'
+      ? 'ขนาดเดิมของแต่ละรูป (รูปที่ซูมจะได้เฉพาะส่วนที่เลือก)'
       : isCropMode(S.mode)
         ? `${o.w}×${o.h} px`
         : `${S.mode === 'w' ? 'กว้าง' : 'สูง'} ${S.size} px`;
@@ -633,8 +637,9 @@ async function prepareFiles() {
       progress('กำลังสร้างไฟล์', i, items.length);
       await nextFrame();
       const it = items[i];
-      const src = S.mode === 'orig' ? await loadOriginal(it) : await loadSource(it.blob);
-      const canvas = renderImage(src, it, S, { target: tgt });
+      // ตัดจากไฟล์ต้นฉบับโดยตรงทุกโหมด: บีบอัดรอบเดียว และไม่ต้องขยายภาพ
+      const src = await loadOriginal(it);
+      const canvas = renderImage(src, it, S, { target: tgt, p3: true });
       const blob = await toBlob(canvas, 'image/jpeg', JPEG_QUALITY);
       canvas.width = 0;
       if (src.close) src.close();
