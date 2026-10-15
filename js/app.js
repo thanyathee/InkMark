@@ -8,6 +8,7 @@ const PREVIEW_MAX = 520;
 const EDITOR_MAX = 1000;
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
+const APP_VERSION = '1.3';
 
 const DEFAULTS = {
   mode: '4:5',
@@ -639,9 +640,36 @@ async function downloadAll(files) {
 }
 
 // ---------- ออฟไลน์ ----------
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+// ---------- อัปเดตอัตโนมัติ ----------
+// แอปที่เพิ่มไว้หน้าโฮมของ iPhone ไม่โหลดหน้าใหม่เอง: เช็กเวอร์ชันทุกครั้งที่เปิดกลับมา
+// ถ้ามีเวอร์ชันใหม่และยังไม่มีรูปค้างอยู่ จะโหลดใหม่ให้ทันที
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let updatePending = false;
+  const applyUpdate = () => {
+    if (state.items.length) {
+      updatePending = true;
+      $('#updateBar').hidden = false;
+    } else {
+      location.reload();
+    }
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) applyUpdate();
+  });
+  navigator.serviceWorker
+    .register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        if (updatePending && !state.items.length) location.reload();
+        else reg.update().catch(() => {});
+      });
+    })
+    .catch(() => {});
+  $('#updateBar').addEventListener('click', () => location.reload());
 }
+$('#version').textContent = `เวอร์ชัน ${APP_VERSION}`;
 
 rebuildGrid();
 

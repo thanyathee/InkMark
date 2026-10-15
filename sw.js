@@ -1,5 +1,6 @@
 // ใช้เน็ตก่อน (ได้เวอร์ชันล่าสุดเสมอ) ถ้าออฟไลน์ค่อยใช้ไฟล์ที่เก็บไว้
-const CACHE = 'inkmark-v3';
+// cache: 'no-cache' = ถามเซิร์ฟเวอร์ทุกครั้ง ไม่ใช้สำเนาเก่าในเบราว์เซอร์ (GitHub Pages เก็บไว้ 10 นาที)
+const CACHE = 'inkmark-v4';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/crop.js', 'js/tone.js', 'js/watermark.js', 'js/render.js',
@@ -21,7 +22,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));

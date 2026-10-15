@@ -30,6 +30,7 @@
       <p>ปรับขนาดให้เท่ากัน · ปรับแสงสีอัตโนมัติ · ใส่ลายน้ำ #TISCOFOUNDATION</p>
       <label class="btn primary big">เลือกรูปจากคลังภาพ<input id="fileInput2" type="file" accept="image/*" multiple hidden></label>
       <p class="hint">รูปถูกประมวลผลในเครื่องนี้เท่านั้น ไม่มีการอัปโหลดไปที่ใด</p>
+      <p class="hint" id="version"></p>
     </section>
     <p id="gridHint" class="grid-hint" hidden>แตะที่รูปเพื่อเลื่อนตำแหน่งกรอบ หรือปรับแสงสีเฉพาะรูป</p>
     <div id="grid" class="grid"></div>
@@ -134,6 +135,7 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
+  <button id="updateBar" class="update-bar" hidden>มีเวอร์ชันใหม่ · แตะเพื่อโหลด (รูปที่เลือกไว้จะหายไป)</button>
 
   <script type="module" src="js/app.js"></script>
 </body>
