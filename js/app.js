@@ -9,7 +9,7 @@ const PREVIEW_MAX = 520;
 const EDITOR_MAX = 1000;
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -594,7 +594,12 @@ window.addEventListener('resize', () => {
 // ---------- บันทึก ----------
 function updateExportSummary() {
   const n = state.items.length;
-  if (!n) return;
+  $('#deskZipBtn').disabled = !n;
+  $('#deskFilesBtn').disabled = !n;
+  if (!n) {
+    $('#exportSummary').textContent = 'ยังไม่มีรูป';
+    return;
+  }
   const first = state.items[0];
   const o = outputSize(S.mode, S.size, first.w, first.h);
   const dims =
