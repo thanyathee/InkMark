@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="stylesheet" href="css/style.css">
+  <title>InkMark · ตรวจเครื่อง</title>
+  <style>
+    .check { max-width: 640px; margin: 0 auto; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px 40px; }
+    .check h1 { font-size: 20px; margin: 0 0 4px; }
+    .check ol { padding: 0; list-style: none; margin: 16px 0; }
+    .check li { background: var(--surface); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-size: 15px; }
+    .check li small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; word-break: break-word; }
+    .check .ua { font-size: 12px; color: var(--muted); word-break: break-all; }
+    .check .result { font-weight: 700; font-size: 17px; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <div class="check">
+    <h1>ตรวจว่าเครื่องนี้ใช้ InkMark ได้ครบไหม</h1>
+    <p class="hint">กดปุ่มแล้วรอประมาณ 10–30 วินาที เสร็จแล้วแคปหน้าจอส่งให้ได้เลย</p>
+    <button id="run" class="btn primary block">เริ่มตรวจ</button>
+    <p id="result" class="result"></p>
+    <ol id="list"></ol>
+    <p class="ua" id="ua"></p>
+    <p><a href="./">← กลับไปหน้าแอป</a></p>
+  </div>
+  <script type="module" src="js/check.js"></script>
+</body>
+</html>

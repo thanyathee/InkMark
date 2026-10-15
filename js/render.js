@@ -20,6 +20,7 @@ const P3 = (() => {
     return false;
   }
 })();
+export const P3_SUPPORTED = P3;
 const ctx2d = (c, p3, extra = {}) => c.getContext('2d', p3 && P3 ? { ...extra, colorSpace: 'display-p3' } : extra);
 
 function loadImage(src) {

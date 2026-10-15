@@ -61,6 +61,7 @@ button { cursor: pointer; border: 0; background: none; }
   position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
   padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px;
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
@@ -223,6 +224,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .pane-title { display: none; }
 .drop-zone {
   position: fixed; inset: 0; z-index: 99; display: grid; place-items: center;
+  background: rgba(11, 61, 145, 0.18);
   background: color-mix(in srgb, var(--primary) 18%, transparent);
   border: 3px dashed var(--primary); pointer-events: none;
 }
