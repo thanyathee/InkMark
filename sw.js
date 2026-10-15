@@ -1,6 +1,6 @@
 // ใช้เน็ตก่อน (ได้เวอร์ชันล่าสุดเสมอ) ถ้าออฟไลน์ค่อยใช้ไฟล์ที่เก็บไว้
 // cache: 'no-cache' = ถามเซิร์ฟเวอร์ทุกครั้ง ไม่ใช้สำเนาเก่าในเบราว์เซอร์ (GitHub Pages เก็บไว้ 10 นาที)
-const CACHE = 'inkmark-v5';
+const CACHE = 'inkmark-v6';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/crop.js', 'js/tone.js', 'js/watermark.js', 'js/render.js', 'js/zip.js',

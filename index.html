@@ -86,12 +86,17 @@
     <div class="pane" data-pane="export">
       <h3 class="pane-title">บันทึก</h3>
       <p id="exportSummary" class="summary"></p>
+      <div class="desk-only desk-export">
+        <button id="deskZipBtn" class="btn primary block">ดาวน์โหลดทั้งหมด (.zip)</button>
+        <button id="deskFilesBtn" class="btn outline block">ดาวน์โหลดทีละรูป</button>
+      </div>
+      <div class="touch-only">
       <button id="exportBtn" class="btn primary block">เตรียมไฟล์ทั้งหมด</button>
       <div id="exportReady" hidden>
-        <button id="shareBtn" class="btn primary block touch-only">บันทึกลงคลังรูป / แชร์</button>
-        <p class="hint touch-only">กดแล้วเลือก <strong>"บันทึกรูปภาพ" (Save Images)</strong> รูปทั้งหมดจะเข้าแอปรูปภาพ</p>
-        <button id="zipBtn" class="btn primary block desk-only">ดาวน์โหลดทั้งหมด (.zip)</button>
-        <button id="downloadBtn" class="ghost small">หรือดาวน์โหลดแยกทีละไฟล์</button>
+        <button id="shareBtn" class="btn primary block">บันทึกลงคลังรูป / แชร์</button>
+        <p class="hint">กดแล้วเลือก <strong>"บันทึกรูปภาพ" (Save Images)</strong> รูปทั้งหมดจะเข้าแอปรูปภาพ</p>
+        <button id="downloadBtn" class="ghost small">หรือดาวน์โหลดเป็นไฟล์</button>
+      </div>
       </div>
     </div>
   </section>

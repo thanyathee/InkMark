@@ -9,7 +9,7 @@ const PREVIEW_MAX = 520;
 const EDITOR_MAX = 1000;
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -617,8 +617,9 @@ function outName(it, i) {
   return `${String(i + 1).padStart(2, '0')}_${base}.jpg`;
 }
 
-// ขั้นที่ 1: สร้างไฟล์ทีละรูป (iPhone จะไม่ค้าง)
-$('#exportBtn').addEventListener('click', async () => {
+// สร้างไฟล์ทีละรูป (iPhone จะไม่ค้าง); ถ้าไม่ได้แก้อะไรหลังสร้างครั้งก่อน ใช้ไฟล์เดิม
+async function prepareFiles() {
+  if (state.exported) return state.exported;
   const items = state.items;
   const tgt = target();
   const files = [];
@@ -638,13 +639,28 @@ $('#exportBtn').addEventListener('click', async () => {
     progressDone();
     toast('สร้างไฟล์ไม่สำเร็จ ลองลดจำนวนรูปหรือขนาดลง', 4000);
     console.error(err);
-    return;
+    return null;
   }
   progressDone();
   state.exported = files;
+  return files;
+}
+
+// มือถือ ขั้นที่ 1: เตรียมไฟล์ แล้วค่อยกดแชร์ (Safari ต้องให้ผู้ใช้กดปุ่มแชร์เอง)
+$('#exportBtn').addEventListener('click', async () => {
+  if (!(await prepareFiles())) return;
   $('#exportBtn').hidden = true;
   $('#exportReady').hidden = false;
-  if (desktop.matches) downloadZip(files);
+});
+
+// คอม: กดครั้งเดียว สร้างไฟล์แล้วดาวน์โหลดเลย
+$('#deskZipBtn').addEventListener('click', async () => {
+  const files = await prepareFiles();
+  if (files) downloadZip(files);
+});
+$('#deskFilesBtn').addEventListener('click', async () => {
+  const files = await prepareFiles();
+  if (files) downloadAll(files);
 });
 
 function zipName() {
@@ -662,7 +678,6 @@ async function downloadZip(files) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
 }
-$('#zipBtn').addEventListener('click', () => state.exported && downloadZip(state.exported));
 
 // ขั้นที่ 2: แชร์ (ต้องกดจากผู้ใช้โดยตรง Safari จึงยอมเปิดหน้าต่างแชร์)
 $('#shareBtn').addEventListener('click', async () => {
