@@ -126,8 +126,14 @@
     </div>
     <div class="ed-body">
       <div class="ed-stage" id="edStage">
-        <canvas id="edPreview"></canvas>
-        <p class="ed-stage-hint" id="edHint"></p>
+        <div class="ed-pane" id="edCropPane">
+          <p class="ed-pane-label" id="edCropLabel">รูปเต็ม · ลากกรอบเพื่อเลือกตำแหน่ง</p>
+          <div class="ed-pane-box"><canvas id="edCrop"></canvas></div>
+        </div>
+        <div class="ed-pane">
+          <p class="ed-pane-label">ผลลัพธ์</p>
+          <div class="ed-pane-box"><canvas id="edPreview"></canvas></div>
+        </div>
       </div>
       <div class="ed-controls">
         <button id="edAuto" class="btn primary block">✨ ปรับอัตโนมัติ</button>

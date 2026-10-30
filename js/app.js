@@ -9,7 +9,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.0';
+const APP_VERSION = '2.1';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -536,6 +536,7 @@ $('#wmOpacity').addEventListener('input', (e) => {
 
 // ---------- ตัวแก้ไขรายรูป: รูปใหญ่เต็มพื้นที่ ลากเลื่อน/ซูมบนรูปได้เลย ----------
 const ed = {
+  crop: $('#edCrop'),
   preview: $('#edPreview'),
   stage: $('#edStage'),
   compare: false,
@@ -612,27 +613,74 @@ function updateEditor() {
   $('#edNext').disabled = state.editIndex === state.items.length - 1;
   const frame = canFrame(S.mode);
   $('#edFrame').hidden = !frame;
+  $('#edCropPane').hidden = !frame;
+  const zoomHow = touchUI ? 'สองนิ้วเพื่อซูม' : 'ลูกกลิ้งเพื่อซูม';
+  $('#edCropLabel').textContent =
+    S.mode === 'orig'
+      ? `รูปเต็ม · ซูมแล้วลากกรอบเลือกส่วนที่ต้องการ · ${zoomHow}`
+      : `รูปเต็ม · ลากกรอบเพื่อเลือกตำแหน่ง · ${zoomHow}`;
   $('#edZoom').value = it.zoom;
-  $('#edHint').textContent = frame ? (touchUI ? 'ลากเพื่อเลื่อน · สองนิ้วเพื่อซูม' : 'ลากเพื่อเลื่อน · ลูกกลิ้งเพื่อซูม') : '';
-  $('#edHint').hidden = !frame;
-  $('#edHint').classList.remove('fade');
-  clearTimeout(ed.hintTimer);
-  ed.hintTimer = setTimeout(() => $('#edHint').classList.add('fade'), 3000);
-  ed.preview.style.cursor = frame ? '' : 'default';
   refreshEdSliders();
   renderNotes();
+  drawEditor();
+}
+function drawEditor() {
+  drawCrop();
   drawPreview();
 }
 function queueEditorRender() {
   cancelAnimationFrame(ed.raf);
-  ed.raf = requestAnimationFrame(drawPreview);
+  ed.raf = requestAnimationFrame(drawEditor);
 }
 
+// ซ้าย: รูปเต็ม + กรอบที่จะตัด (เห็นว่าส่วนไหนถูกตัดออก)
+function drawCrop() {
+  const it = cur();
+  if (!it || !canFrame(S.mode)) return;
+  const src = ed.work || it.thumb;
+  const box = ed.crop.parentElement;
+  const s = Math.min((box.clientWidth - 4) / src.width, (box.clientHeight - 4) / src.height);
+  const cw = Math.max(1, Math.floor(src.width * s));
+  const ch = Math.max(1, Math.floor(src.height * s));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const c = ed.crop;
+  c.width = Math.round(cw * dpr);
+  c.height = Math.round(ch * dpr);
+  c.style.width = `${cw}px`;
+  c.style.height = `${ch}px`;
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, cw, ch);
+  const f = cropFrac(S.mode, src.width, src.height, it);
+  const r = { x: f.x * cw, y: f.y * ch, w: f.w * cw, h: f.h * ch };
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.beginPath();
+  ctx.rect(0, 0, cw, ch);
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.fill('evenodd');
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let k = 1; k < 3; k++) {
+    ctx.moveTo(r.x + (r.w * k) / 3, r.y);
+    ctx.lineTo(r.x + (r.w * k) / 3, r.y + r.h);
+    ctx.moveTo(r.x, r.y + (r.h * k) / 3);
+    ctx.lineTo(r.x + r.w, r.y + (r.h * k) / 3);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+}
+
+// ขวา: ผลลัพธ์จริง (ตัด + แสงสี + ลายน้ำ)
 function drawPreview() {
   const it = cur();
   if (!it) return;
-  const sw = Math.max(50, ed.stage.clientWidth - 24);
-  const sh = Math.max(50, ed.stage.clientHeight - 24);
+  const box = ed.preview.parentElement;
+  const sw = Math.max(50, box.clientWidth - 4);
+  const sh = Math.max(50, box.clientHeight - 4);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   // ระหว่างลาก/ซูม วาดความละเอียดต่ำลงให้ลื่น ปล่อยมือแล้ววาดเต็ม
   const maxSide = ed.interacting ? 720 : Math.min(WORK_MAX, Math.round(Math.max(sw, sh) * dpr));
@@ -644,7 +692,7 @@ function drawPreview() {
   ed.preview.style.height = `${Math.floor(h * s)}px`;
 }
 
-// ลาก = เลื่อนรูปในกรอบ, สองนิ้ว = ซูม
+// ลากกรอบ = เลือกตำแหน่ง, สองนิ้ว/ลูกกลิ้ง = ซูม (ทำที่รูปเต็มฝั่งซ้าย)
 function beginGesture() {
   const it = cur();
   const src = ed.work || it.thumb;
@@ -655,20 +703,20 @@ function beginGesture() {
     zoom: it.zoom,
     pts,
     f: cropFrac(S.mode, src.width, src.height, it),
-    cw: ed.preview.clientWidth,
-    ch: ed.preview.clientHeight,
+    cw: ed.crop.clientWidth,
+    ch: ed.crop.clientHeight,
     dist: pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0,
   };
   ed.interacting = true;
-  ed.preview.classList.add('dragging');
+  ed.crop.classList.add('dragging');
 }
-ed.preview.addEventListener('pointerdown', (e) => {
+ed.crop.addEventListener('pointerdown', (e) => {
   if (!canFrame(S.mode)) return;
-  ed.preview.setPointerCapture(e.pointerId);
+  ed.crop.setPointerCapture(e.pointerId);
   ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   beginGesture();
 });
-ed.preview.addEventListener('pointermove', (e) => {
+ed.crop.addEventListener('pointermove', (e) => {
   if (!ed.ptrs.has(e.pointerId)) return;
   ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const it = cur();
@@ -679,8 +727,9 @@ ed.preview.addEventListener('pointermove', (e) => {
   } else if (pts.length === 1) {
     const dx = pts[0].x - st.pts[0].x;
     const dy = pts[0].y - st.pts[0].y;
-    if (st.f.w < 0.999) it.fx = clampN(st.fx - (dx * st.f.w) / st.cw / (1 - st.f.w), 0, 1);
-    if (st.f.h < 0.999) it.fy = clampN(st.fy - (dy * st.f.h) / st.ch / (1 - st.f.h), 0, 1);
+    // กรอบเคลื่อนตามนิ้ว/เมาส์
+    if (st.f.w < 0.999) it.fx = clampN(st.fx + dx / (st.cw * (1 - st.f.w)), 0, 1);
+    if (st.f.h < 0.999) it.fy = clampN(st.fy + dy / (st.ch * (1 - st.f.h)), 0, 1);
   }
   markManual(it);
   queueEditorRender();
@@ -689,14 +738,14 @@ function endGesture(e) {
   if (!ed.ptrs.delete(e.pointerId)) return;
   if (ed.ptrs.size) return beginGesture();
   ed.interacting = false;
-  ed.preview.classList.remove('dragging');
+  ed.crop.classList.remove('dragging');
   $('#edZoom').value = cur().zoom;
   queueEditorRender();
 }
-ed.preview.addEventListener('pointerup', endGesture);
-ed.preview.addEventListener('pointercancel', endGesture);
+ed.crop.addEventListener('pointerup', endGesture);
+ed.crop.addEventListener('pointercancel', endGesture);
 let wheelTimer = 0;
-ed.preview.addEventListener(
+ed.crop.addEventListener(
   'wheel',
   (e) => {
     if (!canFrame(S.mode)) return;
@@ -715,6 +764,7 @@ ed.preview.addEventListener(
   },
   { passive: false },
 );
+ed.crop.addEventListener('contextmenu', (e) => e.preventDefault());
 ed.preview.addEventListener('contextmenu', (e) => e.preventDefault());
 
 $('#edZoom').addEventListener('input', (e) => {

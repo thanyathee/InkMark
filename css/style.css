@@ -192,11 +192,16 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .ed-nav button { font-size: 24px; padding: 2px 14px; }
 .ed-body { flex: 1; min-height: 0; overflow-y: auto; width: 100%; }
 .ed-stage {
-  position: relative; height: 62vh; height: 62dvh; background: #16181c;
-  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  position: relative; background: #16181c; overflow: hidden;
+  display: flex; flex-direction: column; gap: 8px; padding: 8px;
 }
-#edPreview { display: block; touch-action: none; cursor: grab; box-shadow: 0 2px 16px rgba(0,0,0,0.5); }
-#edPreview.dragging { cursor: grabbing; }
+.ed-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 36vh; height: 36dvh; }
+.ed-pane-label { margin: 0 0 4px; color: #b9bec8; font-size: 12px; font-weight: 600; }
+.ed-pane-box { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+#edCrop, #edPreview { display: block; box-shadow: 0 2px 16px rgba(0,0,0,0.5); }
+#edCrop { touch-action: none; cursor: grab; }
+#edCrop.dragging { cursor: grabbing; }
+#edPreview { -webkit-touch-callout: none; }
 .ed-stage-hint.fade { opacity: 0; }
 .ed-stage-hint {
   position: absolute; left: 50%; top: 10px; transform: translateX(-50%); margin: 0; transition: opacity .4s;
@@ -272,7 +277,8 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
   }
 
   .ed-body { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
-  .ed-stage { height: auto; min-height: 0; }
+  .ed-stage { min-height: 0; flex-direction: row; gap: 16px; padding: 12px 16px 16px; }
+  .ed-pane { flex: 1; height: auto; }
   .ed-controls { border-left: 1px solid var(--line); overflow-y: auto; max-width: none; margin: 0; padding: 16px 20px 24px; background: var(--surface); }
 }
 
@@ -289,3 +295,6 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
   box-shadow: 0 12px 32px rgba(0,0,0,0.35); opacity: 0.92; transform: scale(1.05);
 }
 .drag-ghost canvas { display: block; width: 100%; height: auto; }
+/* โหมดที่ไม่ต้องเลือกตำแหน่ง: ให้ผลลัพธ์ใช้พื้นที่ทั้งหมด */
+#edCropPane[hidden] + .ed-pane { height: 64vh; height: 64dvh; }
+@media (min-width: 1024px) { #edCropPane[hidden] + .ed-pane { height: auto; } }
