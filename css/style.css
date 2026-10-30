@@ -101,10 +101,6 @@ body.sheet-open main { padding-bottom: calc(58vh + var(--safe-b)); }
   display: grid; place-items: center; font-size: 14px; font-weight: 700; line-height: 1;
   background: rgba(0,0,0,0.6); color: #fff; border: 1.5px solid rgba(255,255,255,0.8);
 }
-.tile .edited {
-  position: absolute; left: 6px; bottom: 6px; font-size: 11px;
-  background: var(--primary); color: #fff; padding: 1px 7px; border-radius: 99px;
-}
 
 /* แถบล่าง */
 .tabbar {
@@ -194,10 +190,25 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 }
 .ed-title { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-nav button { font-size: 24px; padding: 2px 14px; }
-.ed-body { flex: 1; overflow-y: auto; padding: 4px 16px calc(var(--safe-b) + 24px); max-width: 640px; width: 100%; margin: 0 auto; }
-.crop-box, .preview-box { display: flex; justify-content: center; background: var(--chip); border-radius: 10px; padding: 8px; }
-#edCrop { touch-action: none; cursor: grab; max-width: 100%; }
-#edPreview { max-width: 100%; touch-action: none; }
+.ed-body { flex: 1; min-height: 0; overflow-y: auto; width: 100%; }
+.ed-stage {
+  position: relative; height: 62vh; height: 62dvh; background: #16181c;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+#edPreview { display: block; touch-action: none; cursor: grab; box-shadow: 0 2px 16px rgba(0,0,0,0.5); }
+#edPreview.dragging { cursor: grabbing; }
+.ed-stage-hint.fade { opacity: 0; }
+.ed-stage-hint {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); margin: 0; transition: opacity .4s;
+  background: rgba(0,0,0,0.55); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 99px;
+  pointer-events: none; white-space: nowrap;
+}
+.ed-controls { padding: 14px 16px calc(var(--safe-b) + 24px); max-width: 640px; margin: 0 auto; }
+.ed-controls .btn.block { margin-top: 0; margin-bottom: 8px; }
+.auto-notes { margin: 0 0 10px; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
+.auto-notes li { padding: 3px 0 3px 18px; position: relative; }
+.auto-notes li::before { content: "✓"; position: absolute; left: 0; color: var(--primary); font-weight: 700; }
+#edCompare { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .row input[type=range] { flex: 1; }
 
@@ -260,8 +271,21 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
     border-top: 1px solid var(--line); box-shadow: 0 -10px 14px -10px rgba(0,0,0,0.12);
   }
 
-  .ed-body { max-width: 1280px; display: grid; grid-template-columns: 1fr 320px; gap: 28px; padding-top: 12px; }
-  .ed-media { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; min-width: 0; }
-  .ed-media:has(#edCropWrap[hidden]) { grid-template-columns: 1fr; }
-  .ed-controls { border-left: 1px solid var(--line); padding-left: 24px; }
+  .ed-body { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
+  .ed-stage { height: auto; min-height: 0; }
+  .ed-controls { border-left: 1px solid var(--line); overflow-y: auto; max-width: none; margin: 0; padding: 16px 20px 24px; background: var(--surface); }
 }
+
+/* ป้ายบนรูปย่อ + ลากเรียงลำดับ */
+.tile .badges { position: absolute; left: 6px; bottom: 6px; display: flex; gap: 4px; flex-wrap: wrap; pointer-events: none; }
+.tile .badges span { font-size: 11px; color: #fff; padding: 1px 7px; border-radius: 99px; }
+.tile .badges .edited { background: var(--primary); }
+.tile .badges .nodate { background: #b26a00; }
+.tile { -webkit-touch-callout: none; touch-action: manipulation; }
+.tile.drag-src { opacity: 0.3; }
+.tile.lifted { transform: scale(1.04); }
+.drag-ghost {
+  position: fixed; z-index: 70; pointer-events: none; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.35); opacity: 0.92; transform: scale(1.05);
+}
+.drag-ghost canvas { display: block; width: 100%; height: auto; }

@@ -1,5 +1,6 @@
 // หน้าตรวจเครื่อง: รันขั้นตอนจริงของแอป (นำเข้า → ตัด/ย่อ → แสงสี → ลายน้ำ → JPEG) บนเครื่องผู้ใช้
 import { prepareItem, loadOriginal, renderImage, toBlob, P3_SUPPORTED } from './render.js';
+import { autoAdjust } from './tone.js';
 
 const $ = (s) => document.querySelector(s);
 const list = $('#list');
@@ -60,8 +61,7 @@ async function jpegProfile(blob) {
 
 const base = {
   size: 2048,
-  auto: true,
-  global: { b: 0, c: 0, v: 0, w: 0 },
+  global: {},
   wm: { on: true, text: '#TISCOFOUNDATION', pos: 'br', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
 };
 
@@ -89,7 +89,9 @@ async function run() {
   });
   await step('นำรูปเข้าแอป', async () => {
     item = await prepareItem(file);
-    return [true, `เก็บไว้ ${item.w}×${item.h}`];
+    const r = autoAdjust(item.stats);
+    Object.assign(item, { tone: r.tone, auto: { wb: r.wb, levels: r.levels } });
+    return [true, `เก็บไว้ ${item.w}×${item.h} · ตัวช่วยวิเคราะห์: ${r.notes.join(', ')}`];
   });
 
   const exportCase = async (label, settings, edit, expect) =>

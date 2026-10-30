@@ -1,6 +1,7 @@
 // ขั้นตอนประมวลผลต่อรูป: ตัด/ย่อ → ปรับแสงสี → ลายน้ำ (ลายน้ำทำท้ายสุด สีจะได้ไม่เพี้ยน)
 import { outputSize, cropFrac } from './crop.js';
-import { analyze, buildParams, applyTone } from './tone.js';
+import { analyzeAuto, buildParams, applyTone, emptyTone } from './tone.js';
+import { readShotDate } from './exif.js';
 import { drawWatermark } from './watermark.js';
 
 // Safari บน iPhone จำกัดขนาด canvas (~16 ล้านพิกเซล) จึงเก็บต้นฉบับไว้ไม่เกินนี้
@@ -71,7 +72,7 @@ function drawScaled(ctx, src, r, W, H, p3 = false) {
   if (cur !== src) cur.width = 0;
 }
 
-// แปลงไฟล์เป็นรายการรูป: เก็บต้นฉบับย่อ (JPEG) + รูปย่อสำหรับพรีวิว + ค่าวิเคราะห์แสง
+// แปลงไฟล์เป็นรายการรูป: เก็บต้นฉบับย่อ (JPEG) + รูปย่อสำหรับพรีวิว + ผลวิเคราะห์แสง + วันที่ถ่าย
 export async function prepareItem(file) {
   const url = URL.createObjectURL(file);
   try {
@@ -89,11 +90,14 @@ export async function prepareItem(file) {
       w: full.width,
       h: full.height,
       thumb,
-      stats: analyze(thumb),
+      stats: analyzeAuto(thumb),
+      date: await readShotDate(file), // 'YYYYMMDD' หรือ null
       fx: 0.5,
       fy: 0.5,
       zoom: 1,
-      tone: { b: 0, c: 0, v: 0, w: 0 },
+      tone: emptyTone(),
+      auto: null, // { wb, levels } จากตัวช่วยวิเคราะห์
+      notes: [],
     };
     full.width = 0;
     return item;
@@ -117,6 +121,14 @@ export async function loadOriginal(item) {
   return loadSource(item.blob);
 }
 
+// รูปขนาดกลางสำหรับหน้าแก้ไข (คมกว่ารูปย่อในตาราง)
+export async function workCanvas(item, maxSide) {
+  const src = await loadSource(item.blob);
+  const c = scaledCanvas(src, src.width || src.naturalWidth, src.height || src.naturalHeight, maxSide);
+  if (src.close) src.close();
+  return c;
+}
+
 export async function loadSource(blob) {
   if ('createImageBitmap' in window) {
     try {
@@ -133,7 +145,7 @@ export async function loadSource(blob) {
   }
 }
 
-// opts: { maxSide, tone (default true), target, into (canvas ที่จะวาดลง), p3 (ใช้ช่วงสี P3) }
+// opts: { maxSide, tone (default true), into (canvas ที่จะวาดลง), p3 (ใช้ช่วงสี P3) }
 export function renderImage(src, item, settings, opts = {}) {
   const sw = src.width || src.naturalWidth;
   const sh = src.height || src.naturalHeight;
@@ -163,7 +175,7 @@ export function renderImage(src, item, settings, opts = {}) {
   drawScaled(ctx, src, { x: f.x * sw, y: f.y * sh, w: f.w * sw, h: f.h * sh }, W, H, opts.p3);
 
   if (opts.tone !== false) {
-    const p = buildParams(item.stats, opts.target, settings.auto, settings.global, item.tone);
+    const p = buildParams(item.auto, settings.global, item.tone);
     if (p) {
       const id = ctx.getImageData(0, 0, W, H);
       applyTone(id, p);

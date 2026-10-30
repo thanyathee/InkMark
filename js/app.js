@@ -1,23 +1,24 @@
 import { SIZE_MODES, SIZES, isCropMode, canFrame, outputSize, cropFrac } from './crop.js';
-import { TONE_SLIDERS, batchTarget } from './tone.js';
+import { TONE_SLIDERS, emptyTone, autoAdjust } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
-import { prepareItem, loadOriginal, renderImage, toBlob } from './render.js';
+import { prepareItem, loadOriginal, renderImage, toBlob, workCanvas } from './render.js';
 
 const $ = (s) => document.querySelector(s);
 const PREVIEW_MAX = 520;
-const EDITOR_MAX = 1000;
+const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '1.8';
+const APP_VERSION = '2.0';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
 const DEFAULTS = {
   mode: '4:5',
   size: 1080,
-  auto: true,
-  global: { b: 0, c: 0, v: 0, w: 0 },
+  autoImport: true,
+  prefix: 'ADS',
+  global: emptyTone(),
   wm: { on: true, text: '#TISCOFOUNDATION', pos: 'br', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
 };
 
@@ -36,7 +37,7 @@ function loadSettings() {
     return {
       ...DEFAULTS,
       ...s,
-      global: { ...DEFAULTS.global, ...s.global },
+      global: { ...emptyTone(), ...s.global },
       wm: { ...DEFAULTS.wm, ...s.wm },
     };
   } catch {
@@ -85,7 +86,9 @@ async function addFiles(fileList) {
     progress('กำลังโหลดรูป', i, files.length);
     await nextFrame();
     try {
-      state.items.push(await prepareItem(files[i]));
+      const it = await prepareItem(files[i]);
+      if (state.settings.autoImport) applyAuto(it);
+      state.items.push(it);
     } catch {
       failed.push(files[i].name);
     }
@@ -112,8 +115,22 @@ $('#clearBtn').addEventListener('click', () => {
   rebuildGrid();
 });
 
+// ตัวช่วยวิเคราะห์: ใส่ค่าที่แนะนำลงแถบเลื่อนของรูปนั้น (ปรับต่อเองได้)
+function applyAuto(it) {
+  const r = autoAdjust(it.stats);
+  it.tone = r.tone;
+  it.auto = { wb: r.wb, levels: r.levels };
+  it.notes = r.notes;
+}
+function clearTone(it) {
+  it.tone = emptyTone();
+  it.auto = null;
+  it.notes = [];
+}
+
 // ---------- ตารางรูป ----------
-const tiles = new Map(); // id -> { el, canvas }
+const tiles = new Map(); // id -> { el, canvas, num, badge }
+let suppressClick = false;
 
 function rebuildGrid() {
   const grid = $('#grid');
@@ -122,13 +139,23 @@ function rebuildGrid() {
   state.items.forEach((it, i) => {
     const el = document.createElement('div');
     el.className = 'tile';
+    el.dataset.id = it.id;
     const canvas = document.createElement('canvas');
     const num = document.createElement('span');
     num.className = 'num';
     num.textContent = i + 1;
+    const badges = document.createElement('div');
+    badges.className = 'badges';
     const badge = document.createElement('span');
     badge.className = 'edited';
-    badge.textContent = 'ปรับแล้ว';
+    badge.textContent = 'ปรับเอง';
+    badges.append(badge);
+    if (!it.date) {
+      const nd = document.createElement('span');
+      nd.className = 'nodate';
+      nd.textContent = 'ไม่มีวันที่ถ่าย';
+      badges.append(nd);
+    }
     const del = document.createElement('button');
     del.className = 'del';
     del.type = 'button';
@@ -138,10 +165,13 @@ function rebuildGrid() {
       e.stopPropagation();
       removeItem(it);
     });
-    el.append(canvas, num, badge, del);
-    el.addEventListener('click', () => openEditor(state.items.indexOf(it)));
+    el.append(canvas, num, badges, del);
+    el.addEventListener('click', () => {
+      if (!suppressClick) openEditor(state.items.indexOf(it));
+    });
+    setupReorder(el);
     grid.append(el);
-    tiles.set(it.id, { el, canvas, badge });
+    tiles.set(it.id, { el, canvas, num, badge });
   });
   const has = state.items.length > 0;
   $('#empty').hidden = has;
@@ -154,6 +184,115 @@ function rebuildGrid() {
   scheduleRender();
 }
 
+function renumber() {
+  state.items.forEach((it, i) => (tiles.get(it.id).num.textContent = i + 1));
+}
+
+// ---------- ลากเพื่อเรียงลำดับ: iPhone แตะค้าง / คอม คลิกค้างแล้วลาก ----------
+const LONG_PRESS_MS = 380;
+let reorder = null;
+let ghost = null;
+
+function setupReorder(el) {
+  el.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length !== 1 || e.target.closest('.del')) return;
+      const t = e.touches[0];
+      reorder = { el, x: t.clientX, y: t.clientY, active: false };
+      reorder.timer = setTimeout(() => startReorder(t.clientX, t.clientY), LONG_PRESS_MS);
+    },
+    { passive: true },
+  );
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('.del')) return;
+    e.preventDefault();
+    reorder = { el, x: e.clientX, y: e.clientY, active: false, mouse: true };
+  });
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+function startReorder(x, y) {
+  if (!reorder) return;
+  reorder.active = true;
+  const r = reorder.el.getBoundingClientRect();
+  reorder.dx = x - r.left;
+  reorder.dy = y - r.top;
+  ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.style.width = `${r.width}px`;
+  const src = reorder.el.querySelector('canvas');
+  const copy = document.createElement('canvas');
+  copy.width = src.width;
+  copy.height = src.height;
+  copy.getContext('2d').drawImage(src, 0, 0);
+  ghost.append(copy);
+  document.body.append(ghost);
+  reorder.el.classList.add('drag-src');
+  navigator.vibrate?.(15);
+  moveReorder(x, y);
+}
+
+function moveReorder(x, y) {
+  ghost.style.left = `${x - reorder.dx}px`;
+  ghost.style.top = `${y - reorder.dy}px`;
+  const over = document.elementFromPoint(x, y)?.closest('.tile');
+  if (over && over !== reorder.el) {
+    const r = over.getBoundingClientRect();
+    const after = x > r.left + r.width / 2;
+    $('#grid').insertBefore(reorder.el, after ? over.nextSibling : over);
+  }
+  if (y < 70) window.scrollBy(0, -12);
+  else if (y > window.innerHeight - 90) window.scrollBy(0, 12);
+}
+
+function endReorder() {
+  if (!reorder) return;
+  clearTimeout(reorder.timer);
+  if (reorder.active) {
+    ghost.remove();
+    ghost = null;
+    reorder.el.classList.remove('drag-src');
+    const order = [...$('#grid').children].map((el) => +el.dataset.id);
+    state.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    renumber();
+    invalidateExport();
+    updateExportSummary();
+    suppressClick = true;
+    setTimeout(() => (suppressClick = false), 80);
+  }
+  reorder = null;
+}
+
+document.addEventListener(
+  'touchmove',
+  (e) => {
+    if (!reorder || reorder.mouse) return;
+    const t = e.touches[0];
+    if (!reorder.active) {
+      if (Math.hypot(t.clientX - reorder.x, t.clientY - reorder.y) > 10) {
+        clearTimeout(reorder.timer);
+        reorder = null; // เลื่อนจอ ไม่ใช่ลากรูป
+      }
+      return;
+    }
+    e.preventDefault();
+    moveReorder(t.clientX, t.clientY);
+  },
+  { passive: false },
+);
+document.addEventListener('touchend', endReorder);
+document.addEventListener('touchcancel', endReorder);
+document.addEventListener('mousemove', (e) => {
+  if (!reorder || !reorder.mouse) return;
+  if (!reorder.active) {
+    if (Math.hypot(e.clientX - reorder.x, e.clientY - reorder.y) < 6) return;
+    startReorder(e.clientX, e.clientY);
+  }
+  moveReorder(e.clientX, e.clientY);
+});
+document.addEventListener('mouseup', endReorder);
+
 function removeItem(it) {
   const i = state.items.indexOf(it);
   if (i < 0) return;
@@ -164,17 +303,11 @@ function removeItem(it) {
   if (!state.items.length) closeSheet();
 }
 
-function isEdited(it) {
-  return it.fx !== 0.5 || it.fy !== 0.5 || it.zoom !== 1 || Object.values(it.tone).some((v) => v);
-}
-
-const target = () => batchTarget(state.items.map((i) => i.stats));
-
-function renderTile(it, tgt = target()) {
+function renderTile(it) {
   const t = tiles.get(it.id);
   if (!t) return;
-  renderImage(it.thumb, it, state.settings, { maxSide: PREVIEW_MAX, target: tgt, into: t.canvas });
-  t.badge.hidden = !isEdited(it);
+  renderImage(it.thumb, it, state.settings, { maxSide: PREVIEW_MAX, into: t.canvas });
+  t.badge.hidden = !it.manual;
 }
 
 // วาดพรีวิวทีละรูปโดยไม่ค้างหน้าจอ; ถ้ามีการเปลี่ยนค่าระหว่างวาด จะเริ่มรอบใหม่
@@ -183,10 +316,9 @@ function scheduleRender() {
   const gen = ++renderGen;
   (async () => {
     await nextFrame();
-    const tgt = target();
     for (const it of state.items) {
       if (gen !== renderGen) return;
-      renderTile(it, tgt);
+      renderTile(it);
       await nextFrame();
     }
   })();
@@ -241,7 +373,7 @@ function sliders(container, getObj, onChange) {
   for (const s of TONE_SLIDERS) {
     const row = document.createElement('label');
     row.className = 'sl';
-    row.innerHTML = `<span>${s.label}</span><output></output><input type="range" min="-50" max="50" step="1">`;
+    row.innerHTML = `<span>${s.label}</span><output></output><input type="range" min="${s.min}" max="${s.max}" step="1">`;
     const input = row.querySelector('input');
     const out = row.querySelector('output');
     input.addEventListener('input', () => {
@@ -315,14 +447,25 @@ function updateSizeLabels() {
 updateSizeLabels();
 
 // แสงสี
-$('#autoToggle').checked = S.auto;
-$('#autoToggle').addEventListener('change', (e) => {
-  S.auto = e.target.checked;
-  settingsChanged();
+$('#autoImport').checked = S.autoImport;
+$('#autoImport').addEventListener('change', (e) => {
+  S.autoImport = e.target.checked;
+  saveSettings();
+});
+$('#autoAllBtn').addEventListener('click', () => {
+  for (const it of state.items) applyAuto(it);
+  toast(`✨ ปรับอัตโนมัติแล้ว ${state.items.length} รูป`);
+  invalidateExport();
+  scheduleRender();
+});
+$('#resetAllBtn').addEventListener('click', () => {
+  for (const it of state.items) clearTone(it);
+  invalidateExport();
+  scheduleRender();
 });
 const refreshGlobal = sliders($('#globalSliders'), () => S.global, settingsChanged);
 $('#globalReset').addEventListener('click', () => {
-  S.global = { b: 0, c: 0, v: 0, w: 0 };
+  S.global = emptyTone();
   refreshGlobal();
   settingsChanged();
 });
@@ -391,20 +534,47 @@ $('#wmOpacity').addEventListener('input', (e) => {
   settingsChanged();
 });
 
-// ---------- ตัวแก้ไขรายรูป ----------
+// ---------- ตัวแก้ไขรายรูป: รูปใหญ่เต็มพื้นที่ ลากเลื่อน/ซูมบนรูปได้เลย ----------
 const ed = {
-  crop: $('#edCrop'),
   preview: $('#edPreview'),
-  geo: null,
+  stage: $('#edStage'),
   compare: false,
+  interacting: false,
   raf: 0,
+  work: null,
+  workId: null,
+  ptrs: new Map(),
+  start: null,
 };
 const cur = () => state.items[state.editIndex];
+const clampN = (x, a, b) => Math.min(b, Math.max(a, x));
+const touchUI = window.matchMedia('(hover: none)').matches;
+
+function markManual(it) {
+  it.manual = true;
+  invalidateExport();
+}
 
 const refreshEdSliders = sliders($('#edSliders'), () => cur()?.tone, () => {
-  invalidateExport();
+  markManual(cur());
   queueEditorRender();
 });
+
+async function ensureWork(it) {
+  if (ed.workId === it.id) return;
+  if (ed.work) ed.work.width = 0;
+  ed.work = null;
+  ed.workId = it.id;
+  try {
+    const c = await workCanvas(it, WORK_MAX);
+    if (ed.workId === it.id) {
+      ed.work = c;
+      queueEditorRender();
+    } else c.width = 0;
+  } catch {
+    /* ใช้รูปย่อแทน */
+  }
+}
 
 function openEditor(i) {
   if (i < 0 || i >= state.items.length) return;
@@ -412,125 +582,164 @@ function openEditor(i) {
   $('#editor').hidden = false;
   document.body.style.overflow = 'hidden';
   updateEditor();
+  ensureWork(cur());
 }
 function closeEditor() {
   const it = cur();
   $('#editor').hidden = true;
   document.body.style.overflow = '';
   state.editIndex = -1;
+  if (ed.work) ed.work.width = 0;
+  ed.work = null;
+  ed.workId = null;
   if (it) renderTile(it);
+}
+function renderNotes() {
+  const it = cur();
+  const ul = $('#edNotes');
+  ul.textContent = '';
+  for (const n of it.notes || []) {
+    const li = document.createElement('li');
+    li.textContent = n;
+    ul.append(li);
+  }
+  ul.hidden = !ul.children.length;
 }
 function updateEditor() {
   const it = cur();
   $('#edTitle').textContent = `${state.editIndex + 1}/${state.items.length} · ${it.name}`;
   $('#edPrev').disabled = state.editIndex === 0;
   $('#edNext').disabled = state.editIndex === state.items.length - 1;
-  $('#edCropWrap').hidden = !canFrame(S.mode);
-  $('#edCropLabel').textContent =
-    S.mode === 'orig' ? 'ซูม แล้วลากกรอบเลือกส่วนที่ต้องการ (สัดส่วนเท่าต้นฉบับ)' : 'ลากกรอบเพื่อเลือกตำแหน่ง';
+  const frame = canFrame(S.mode);
+  $('#edFrame').hidden = !frame;
   $('#edZoom').value = it.zoom;
+  $('#edHint').textContent = frame ? (touchUI ? 'ลากเพื่อเลื่อน · สองนิ้วเพื่อซูม' : 'ลากเพื่อเลื่อน · ลูกกลิ้งเพื่อซูม') : '';
+  $('#edHint').hidden = !frame;
+  $('#edHint').classList.remove('fade');
+  clearTimeout(ed.hintTimer);
+  ed.hintTimer = setTimeout(() => $('#edHint').classList.add('fade'), 3000);
+  ed.preview.style.cursor = frame ? '' : 'default';
   refreshEdSliders();
-  drawCrop();
+  renderNotes();
   drawPreview();
 }
 function queueEditorRender() {
   cancelAnimationFrame(ed.raf);
-  ed.raf = requestAnimationFrame(() => {
-    drawCrop();
-    drawPreview();
-  });
-}
-
-function fitCanvas(canvas, w, h) {
-  const box = canvas.parentElement;
-  const maxW = box.clientWidth - 16;
-  const maxH = window.innerHeight * (desktop.matches ? 0.72 : 0.42);
-  const s = Math.min(maxW / w, maxH / h);
-  canvas.style.width = `${Math.round(w * s)}px`;
-  canvas.style.height = `${Math.round(h * s)}px`;
-  return s;
-}
-
-function drawCrop() {
-  const it = cur();
-  if (!it || !canFrame(S.mode)) return;
-  const t = it.thumb;
-  const c = ed.crop;
-  const s = fitCanvas(c, t.width, t.height);
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  const cw = Math.round(t.width * s);
-  const ch = Math.round(t.height * s);
-  c.width = Math.round(cw * dpr);
-  c.height = Math.round(ch * dpr);
-  const ctx = c.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.drawImage(t, 0, 0, cw, ch);
-  const f = cropFrac(S.mode, t.width, t.height, it);
-  const r = { x: f.x * cw, y: f.y * ch, w: f.w * cw, h: f.h * ch };
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.beginPath();
-  ctx.rect(0, 0, cw, ch);
-  ctx.rect(r.x, r.y, r.w, r.h);
-  ctx.fill('evenodd');
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let k = 1; k < 3; k++) {
-    ctx.moveTo(r.x + (r.w * k) / 3, r.y);
-    ctx.lineTo(r.x + (r.w * k) / 3, r.y + r.h);
-    ctx.moveTo(r.x, r.y + (r.h * k) / 3);
-    ctx.lineTo(r.x + r.w, r.y + (r.h * k) / 3);
-  }
-  ctx.stroke();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-  ed.geo = { cw, ch, f };
+  ed.raf = requestAnimationFrame(drawPreview);
 }
 
 function drawPreview() {
   const it = cur();
   if (!it) return;
-  renderImage(it.thumb, it, S, { maxSide: EDITOR_MAX, target: target(), tone: !ed.compare, into: ed.preview });
-  fitCanvas(ed.preview, ed.preview.width, ed.preview.height);
+  const sw = Math.max(50, ed.stage.clientWidth - 24);
+  const sh = Math.max(50, ed.stage.clientHeight - 24);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // ระหว่างลาก/ซูม วาดความละเอียดต่ำลงให้ลื่น ปล่อยมือแล้ววาดเต็ม
+  const maxSide = ed.interacting ? 720 : Math.min(WORK_MAX, Math.round(Math.max(sw, sh) * dpr));
+  renderImage(ed.work || it.thumb, it, S, { maxSide, tone: !ed.compare, into: ed.preview });
+  const w = ed.preview.width;
+  const h = ed.preview.height;
+  const s = Math.min(sw / w, sh / h);
+  ed.preview.style.width = `${Math.floor(w * s)}px`;
+  ed.preview.style.height = `${Math.floor(h * s)}px`;
 }
 
-// ลากกรอบ
-let drag = null;
-ed.crop.addEventListener('pointerdown', (e) => {
-  ed.crop.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, fx: cur().fx, fy: cur().fy };
-});
-ed.crop.addEventListener('pointermove', (e) => {
-  if (!drag || !ed.geo) return;
+// ลาก = เลื่อนรูปในกรอบ, สองนิ้ว = ซูม
+function beginGesture() {
   const it = cur();
-  const { cw, ch, f } = ed.geo;
-  const slackX = cw * (1 - f.w);
-  const slackY = ch * (1 - f.h);
-  if (slackX > 0.5) it.fx = Math.min(1, Math.max(0, drag.fx + (e.clientX - drag.x) / slackX));
-  if (slackY > 0.5) it.fy = Math.min(1, Math.max(0, drag.fy + (e.clientY - drag.y) / slackY));
-  invalidateExport();
+  const src = ed.work || it.thumb;
+  const pts = [...ed.ptrs.values()].map((p) => ({ ...p }));
+  ed.start = {
+    fx: it.fx,
+    fy: it.fy,
+    zoom: it.zoom,
+    pts,
+    f: cropFrac(S.mode, src.width, src.height, it),
+    cw: ed.preview.clientWidth,
+    ch: ed.preview.clientHeight,
+    dist: pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0,
+  };
+  ed.interacting = true;
+  ed.preview.classList.add('dragging');
+}
+ed.preview.addEventListener('pointerdown', (e) => {
+  if (!canFrame(S.mode)) return;
+  ed.preview.setPointerCapture(e.pointerId);
+  ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  beginGesture();
+});
+ed.preview.addEventListener('pointermove', (e) => {
+  if (!ed.ptrs.has(e.pointerId)) return;
+  ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const it = cur();
+  const pts = [...ed.ptrs.values()];
+  const st = ed.start;
+  if (pts.length >= 2 && st.dist) {
+    it.zoom = clampN((st.zoom * Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)) / st.dist, 1, 4);
+  } else if (pts.length === 1) {
+    const dx = pts[0].x - st.pts[0].x;
+    const dy = pts[0].y - st.pts[0].y;
+    if (st.f.w < 0.999) it.fx = clampN(st.fx - (dx * st.f.w) / st.cw / (1 - st.f.w), 0, 1);
+    if (st.f.h < 0.999) it.fy = clampN(st.fy - (dy * st.f.h) / st.ch / (1 - st.f.h), 0, 1);
+  }
+  markManual(it);
   queueEditorRender();
 });
-const endDrag = () => (drag = null);
-ed.crop.addEventListener('pointerup', endDrag);
-ed.crop.addEventListener('pointercancel', endDrag);
+function endGesture(e) {
+  if (!ed.ptrs.delete(e.pointerId)) return;
+  if (ed.ptrs.size) return beginGesture();
+  ed.interacting = false;
+  ed.preview.classList.remove('dragging');
+  $('#edZoom').value = cur().zoom;
+  queueEditorRender();
+}
+ed.preview.addEventListener('pointerup', endGesture);
+ed.preview.addEventListener('pointercancel', endGesture);
+let wheelTimer = 0;
+ed.preview.addEventListener(
+  'wheel',
+  (e) => {
+    if (!canFrame(S.mode)) return;
+    e.preventDefault();
+    const it = cur();
+    it.zoom = clampN(it.zoom * Math.exp(-e.deltaY * 0.0015), 1, 4);
+    $('#edZoom').value = it.zoom;
+    markManual(it);
+    ed.interacting = true;
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => {
+      ed.interacting = false;
+      queueEditorRender();
+    }, 180);
+    queueEditorRender();
+  },
+  { passive: false },
+);
+ed.preview.addEventListener('contextmenu', (e) => e.preventDefault());
 
 $('#edZoom').addEventListener('input', (e) => {
   cur().zoom = +e.target.value;
-  invalidateExport();
+  markManual(cur());
   queueEditorRender();
 });
 $('#edCropReset').addEventListener('click', () => {
   Object.assign(cur(), { fx: 0.5, fy: 0.5, zoom: 1 });
   $('#edZoom').value = 1;
+  markManual(cur());
+  queueEditorRender();
+});
+$('#edAuto').addEventListener('click', () => {
+  applyAuto(cur());
+  refreshEdSliders();
+  renderNotes();
   invalidateExport();
   queueEditorRender();
 });
 $('#edToneReset').addEventListener('click', () => {
-  cur().tone = { b: 0, c: 0, v: 0, w: 0 };
+  clearTone(cur());
   refreshEdSliders();
-  invalidateExport();
+  renderNotes();
+  markManual(cur());
   queueEditorRender();
 });
 $('#edRemove').addEventListener('click', () => {
@@ -539,17 +748,23 @@ $('#edRemove').addEventListener('click', () => {
   if (!state.items.length) return closeEditor();
   state.editIndex = Math.min(i, state.items.length - 1);
   updateEditor();
+  ensureWork(cur());
 });
 
-// กดค้างเพื่อเทียบก่อน/หลัง
+// กดค้างเพื่อเทียบก่อน/หลังปรับแสงสี
 const setCompare = (v) => {
   if (ed.compare === v) return;
   ed.compare = v;
+  $('#edCompare').classList.toggle('on', v);
   drawPreview();
 };
-ed.preview.addEventListener('pointerdown', () => setCompare(true));
-for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) ed.preview.addEventListener(ev, () => setCompare(false));
-ed.preview.addEventListener('contextmenu', (e) => e.preventDefault());
+const cmp = $('#edCompare');
+cmp.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  setCompare(true);
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) cmp.addEventListener(ev, () => setCompare(false));
+cmp.addEventListener('contextmenu', (e) => e.preventDefault());
 
 $('#edClose').addEventListener('click', closeEditor);
 $('#edPrev').addEventListener('click', () => {
@@ -602,6 +817,7 @@ function updateExportSummary() {
   $('#deskFilesBtn').disabled = !n;
   if (!n) {
     $('#exportSummary').textContent = 'ยังไม่มีรูป';
+    $('#namePreview').textContent = `ตัวอย่าง: ${['00', cleanPrefix(), todayStr(), '01'].filter(Boolean).join('_')}.jpg`;
     return;
   }
   const first = state.items[0];
@@ -613,7 +829,40 @@ function updateExportSummary() {
         ? `${o.w}×${o.h} px`
         : `${S.mode === 'w' ? 'กว้าง' : 'สูง'} ${S.size} px`;
   $('#exportSummary').innerHTML = `<strong>${n} รูป</strong> · ${dims} · JPEG`;
+  const noDate = state.items.filter((it) => !it.date).length;
+  $('#namePreview').textContent =
+    `ตัวอย่าง: ${fileNames()[0]}` + (noDate ? ` · ${noDate} รูปไม่มีวันที่ถ่าย ใช้วันนี้แทน` : '');
 }
+
+// ชื่อไฟล์: 00_คำค้นหา_วันที่ถ่าย_ลำดับ (ลำดับตามหน้าแอป เริ่มนับใหม่ทุกวันที่)
+const pad2 = (n) => String(n).padStart(2, '0');
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+}
+function cleanPrefix() {
+  return (S.prefix || '')
+    .trim()
+    .replace(/[^\w\u0E00-\u0E7F-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+function fileNames() {
+  const today = todayStr();
+  const pre = cleanPrefix();
+  const count = {};
+  return state.items.map((it) => {
+    const d = it.date || today;
+    count[d] = (count[d] || 0) + 1;
+    return `${['00', pre, d, pad2(count[d])].filter(Boolean).join('_')}.jpg`;
+  });
+}
+$('#prefixInput').value = S.prefix;
+$('#prefixInput').addEventListener('input', (e) => {
+  S.prefix = e.target.value;
+  saveSettings();
+  invalidateExport();
+  updateExportSummary();
+});
 
 function invalidateExport() {
   state.exported = null;
@@ -621,16 +870,11 @@ function invalidateExport() {
   $('#exportBtn').hidden = false;
 }
 
-function outName(it, i) {
-  const base = it.name.replace(/\.[^.]+$/, '').replace(/[^\w฀-๿-]+/g, '_');
-  return `${String(i + 1).padStart(2, '0')}_${base}.jpg`;
-}
-
 // สร้างไฟล์ทีละรูป (iPhone จะไม่ค้าง); ถ้าไม่ได้แก้อะไรหลังสร้างครั้งก่อน ใช้ไฟล์เดิม
 async function prepareFiles() {
   if (state.exported) return state.exported;
   const items = state.items;
-  const tgt = target();
+  const names = fileNames();
   const files = [];
   try {
     for (let i = 0; i < items.length; i++) {
@@ -639,11 +883,11 @@ async function prepareFiles() {
       const it = items[i];
       // ตัดจากไฟล์ต้นฉบับโดยตรงทุกโหมด: บีบอัดรอบเดียว และไม่ต้องขยายภาพ
       const src = await loadOriginal(it);
-      const canvas = renderImage(src, it, S, { target: tgt, p3: true });
+      const canvas = renderImage(src, it, S, { p3: true });
       const blob = await toBlob(canvas, 'image/jpeg', JPEG_QUALITY);
       canvas.width = 0;
       if (src.close) src.close();
-      files.push(new File([blob], outName(it, i), { type: 'image/jpeg' }));
+      files.push(new File([blob], names[i], { type: 'image/jpeg' }));
     }
   } catch (err) {
     progressDone();
@@ -674,9 +918,7 @@ $('#deskFilesBtn').addEventListener('click', async () => {
 });
 
 function zipName() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `InkMark_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.zip`;
+  return `${['00', cleanPrefix(), state.items[0]?.date || todayStr()].filter(Boolean).join('_')}.zip`;
 }
 async function downloadZip(files) {
   const zip = await makeZip(files);
