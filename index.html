@@ -136,25 +136,40 @@
         </div>
       </div>
       <div class="ed-controls">
-        <button id="edAuto" class="btn primary block">✨ ปรับอัตโนมัติ</button>
-        <ul id="edNotes" class="auto-notes"></ul>
-        <button id="edCompare" class="btn outline block">กดค้างเพื่อดูก่อนปรับ</button>
-        <div id="edFrame">
+        <div id="edFrame" class="ed-frame">
+          <p class="hint mobile-only">ลากกรอบสีขาวเพื่อเลือกตำแหน่ง · ใช้สองนิ้วซูมได้</p>
           <div class="row">
             <span class="muted">ซูม</span>
             <input id="edZoom" type="range" min="1" max="4" step="0.01">
             <button id="edCropReset" class="ghost small">กึ่งกลาง</button>
           </div>
         </div>
-        <p class="label">ปรับแสงสีรูปนี้</p>
-        <div id="edSliders" class="sliders"></div>
-        <div class="row">
-          <button id="edToneReset" class="ghost small">ล้างการปรับรูปนี้</button>
+        <div class="ed-tone">
+          <div class="auto-row">
+            <button id="edAuto" class="btn primary">✨ ปรับอัตโนมัติ</button>
+            <button id="edToneReset" class="ghost small">ล้างการปรับ</button>
+          </div>
+          <ul id="edNotes" class="auto-notes"></ul>
+          <button id="edCompare" class="btn outline block desk-only">กดค้างเพื่อดูก่อนปรับ</button>
+          <!-- มือถือ: เลือกค่าทีละตัว แล้วปรับด้วยแถบเดียว (รูปไม่เลื่อนหาย) -->
+          <div id="edChips" class="chips mobile-only"></div>
+          <div class="one-slider mobile-only">
+            <input id="edOne" type="range" step="1">
+          </div>
+          <p class="hint mobile-only">กดค้างที่รูปเพื่อดูก่อนปรับ · แตะชื่อค่าสองครั้งเพื่อกลับเป็น 0</p>
+          <p class="label desk-only">ปรับแสงสีรูปนี้</p>
+          <div id="edSliders" class="sliders desk-only"></div>
+        </div>
+        <div class="row ed-actions">
           <button id="edRemove" class="ghost small danger">ลบรูปนี้</button>
         </div>
         <p class="hint desk-only">คีย์ลัด: ← → เปลี่ยนรูป · Esc ปิด · ลูกกลิ้งเมาส์ = ซูม</p>
       </div>
     </div>
+    <nav class="ed-tabs mobile-only" id="edTabs">
+      <button type="button" data-tab="frame"><span class="ico">▣</span><span>ตำแหน่ง</span></button>
+      <button type="button" data-tab="tone"><span class="ico">☀︎</span><span>แสงสี</span></button>
+    </nav>
   </div>
 
   <div id="progress" class="progress" hidden>

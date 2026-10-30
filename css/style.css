@@ -298,3 +298,52 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 /* โหมดที่ไม่ต้องเลือกตำแหน่ง: ให้ผลลัพธ์ใช้พื้นที่ทั้งหมด */
 #edCropPane[hidden] + .ed-pane { height: 64vh; height: 64dvh; }
 @media (min-width: 1024px) { #edCropPane[hidden] + .ed-pane { height: auto; } }
+
+/* ---------- หน้าแก้ไขบนมือถือ: รูปค้างบนจอ เครื่องมืออยู่ล่าง (แบบแอปรูปภาพ iPhone) ---------- */
+.auto-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.auto-row .btn { flex: 1; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chips::-webkit-scrollbar { display: none; }
+.chips button {
+  flex: none; padding: 7px 12px; border-radius: 99px; background: var(--chip); font-size: 14px; font-weight: 600;
+  display: flex; gap: 6px; align-items: baseline;
+}
+.chips button small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.chips button.on { background: var(--primary); color: #fff; }
+.chips button.on small { color: rgba(255,255,255,0.8); }
+.chips button.changed:not(.on) small { color: var(--primary); }
+.one-slider { padding: 4px 4px 0; }
+.one-slider input { width: 100%; }
+.ed-tabs { display: none; }
+
+@media (max-width: 1023px) {
+  .mobile-only { display: revert; }
+  .chips.mobile-only { display: flex; }
+  .editor .ed-body { display: flex; flex-direction: column; overflow: hidden; }
+  .editor .ed-stage { flex: 1; min-height: 0; padding: 8px; }
+  .editor .ed-pane { flex: 1; height: auto; min-height: 0; }
+  #edCropPane[hidden] + .ed-pane { height: auto; }
+  .editor .ed-controls { flex: none; max-height: 42vh; overflow-y: auto; width: 100%; padding: 10px 16px 6px; background: var(--surface); }
+  .editor .auto-notes {
+    font-size: 12px; margin-bottom: 6px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .editor .auto-notes li { display: inline; padding: 0 6px 0 0; }
+  .editor .auto-notes li::before { position: static; margin-right: 2px; }
+  .editor .ed-actions { display: none; }
+  .editor .ed-controls .hint { margin: 2px 0 4px; font-size: 12px; }
+  .ed-tabs {
+    display: grid; grid-template-columns: 1fr 1fr; flex: none; background: var(--surface);
+    border-top: 1px solid var(--line); padding: 4px 8px calc(var(--safe-b) + 4px);
+  }
+  .ed-tabs button { display: flex; flex-direction: column; align-items: center; padding: 6px 0; border-radius: 12px; font-size: 12px; color: var(--muted); }
+  .ed-tabs .ico { font-size: 18px; line-height: 1.2; font-weight: 700; }
+  .ed-tabs button.on { color: var(--primary); background: var(--chip); }
+  /* แท็บตำแหน่ง: เห็นรูปเต็ม+กรอบ · แท็บแสงสี: เห็นผลลัพธ์ */
+  .editor.tab-tone #edCropPane { display: none; }
+  .editor.tab-frame #edCropPane ~ .ed-pane { display: none; }
+  .editor.tab-tone .ed-frame { display: none; }
+  .editor.tab-frame .ed-tone, .editor.tab-frame .ed-actions { display: none; }
+  .editor .ed-pane-label { display: none; }
+}
+@media (min-width: 1024px) { .mobile-only { display: none !important; } }

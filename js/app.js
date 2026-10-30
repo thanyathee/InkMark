@@ -9,7 +9,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -556,10 +556,77 @@ function markManual(it) {
   invalidateExport();
 }
 
-const refreshEdSliders = sliders($('#edSliders'), () => cur()?.tone, () => {
+const refreshDeskSliders = sliders($('#edSliders'), () => cur()?.tone, () => {
   markManual(cur());
+  refreshChips();
   queueEditorRender();
 });
+
+// มือถือ: ชิปเลือกค่า + แถบเลื่อนเดียว
+ed.chip = 'b';
+const chipEls = {};
+for (const sl of TONE_SLIDERS) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.innerHTML = `${sl.label} <small></small>`;
+  b.addEventListener('click', () => {
+    ed.chip = sl.key;
+    refreshChips();
+  });
+  b.addEventListener('dblclick', () => {
+    cur().tone[sl.key] = 0;
+    markManual(cur());
+    refreshEdTone();
+    queueEditorRender();
+  });
+  chipEls[sl.key] = b;
+  $('#edChips').append(b);
+}
+function refreshChips() {
+  const it = cur();
+  if (!it) return;
+  for (const sl of TONE_SLIDERS) {
+    const v = it.tone[sl.key] || 0;
+    const el = chipEls[sl.key];
+    el.querySelector('small').textContent = fmt(v);
+    el.classList.toggle('on', ed.chip === sl.key);
+    el.classList.toggle('changed', v !== 0);
+  }
+  const sl = TONE_SLIDERS.find((x) => x.key === ed.chip);
+  const one = $('#edOne');
+  one.min = sl.min;
+  one.max = sl.max;
+  one.value = it.tone[sl.key] || 0;
+}
+$('#edOne').addEventListener('input', (e) => {
+  const it = cur();
+  it.tone[ed.chip] = +e.target.value;
+  chipEls[ed.chip].querySelector('small').textContent = fmt(+e.target.value);
+  chipEls[ed.chip].classList.toggle('changed', +e.target.value !== 0);
+  markManual(it);
+  queueEditorRender();
+});
+$('#edOne').addEventListener('change', () => refreshDeskSliders());
+function refreshEdTone() {
+  refreshDeskSliders();
+  refreshChips();
+}
+
+// มือถือ: แท็บ "ตำแหน่ง" (รูปเต็ม+กรอบ) / "แสงสี" (ผลลัพธ์)
+ed.tab = 'frame';
+function setTab(t) {
+  const el = $('#editor');
+  el.classList.toggle('tab-frame', t === 'frame');
+  el.classList.toggle('tab-tone', t === 'tone');
+  document.querySelectorAll('#edTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+  queueEditorRender();
+}
+document.querySelectorAll('#edTabs button').forEach((b) =>
+  b.addEventListener('click', () => {
+    ed.tab = b.dataset.tab; // จำแท็บล่าสุดไว้ใช้กับรูปถัดไป
+    setTab(ed.tab);
+  }),
+);
 
 async function ensureWork(it) {
   if (ed.workId === it.id) return;
@@ -620,7 +687,9 @@ function updateEditor() {
       ? `รูปเต็ม · ซูมแล้วลากกรอบเลือกส่วนที่ต้องการ · ${zoomHow}`
       : `รูปเต็ม · ลากกรอบเพื่อเลือกตำแหน่ง · ${zoomHow}`;
   $('#edZoom').value = it.zoom;
-  refreshEdSliders();
+  $('#edTabs [data-tab="frame"]').hidden = !frame;
+  setTab(frame ? ed.tab : 'tone');
+  refreshEdTone();
   renderNotes();
   drawEditor();
 }
@@ -639,6 +708,7 @@ function drawCrop() {
   if (!it || !canFrame(S.mode)) return;
   const src = ed.work || it.thumb;
   const box = ed.crop.parentElement;
+  if (box.clientWidth < 10) return; // ซ่อนอยู่ (แท็บแสงสีบนมือถือ)
   const s = Math.min((box.clientWidth - 4) / src.width, (box.clientHeight - 4) / src.height);
   const cw = Math.max(1, Math.floor(src.width * s));
   const ch = Math.max(1, Math.floor(src.height * s));
@@ -679,6 +749,7 @@ function drawPreview() {
   const it = cur();
   if (!it) return;
   const box = ed.preview.parentElement;
+  if (box.clientWidth < 10) return;
   const sw = Math.max(50, box.clientWidth - 4);
   const sh = Math.max(50, box.clientHeight - 4);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -766,6 +837,12 @@ ed.crop.addEventListener(
 );
 ed.crop.addEventListener('contextmenu', (e) => e.preventDefault());
 ed.preview.addEventListener('contextmenu', (e) => e.preventDefault());
+// กดค้างที่รูปผลลัพธ์ = ดูก่อนปรับ (สะดวกบนมือถือ)
+ed.preview.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  setCompare(true);
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) ed.preview.addEventListener(ev, () => setCompare(false));
 
 $('#edZoom').addEventListener('input', (e) => {
   cur().zoom = +e.target.value;
@@ -780,14 +857,14 @@ $('#edCropReset').addEventListener('click', () => {
 });
 $('#edAuto').addEventListener('click', () => {
   applyAuto(cur());
-  refreshEdSliders();
+  refreshEdTone();
   renderNotes();
   invalidateExport();
   queueEditorRender();
 });
 $('#edToneReset').addEventListener('click', () => {
   clearTone(cur());
-  refreshEdSliders();
+  refreshEdTone();
   renderNotes();
   markManual(cur());
   queueEditorRender();
