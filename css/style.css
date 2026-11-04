@@ -347,3 +347,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
   .editor .ed-pane-label { display: none; }
 }
 @media (min-width: 1024px) { .mobile-only { display: none !important; } }
+
+/* ขนาดรูป: เรียงเป็นคู่ แนวตั้ง | แนวนอน */
+.seg.mode-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.seg.mode-grid button[data-value="orig"] { grid-column: 1 / -1; }

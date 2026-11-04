@@ -1,10 +1,12 @@
 // โหมดขนาดภาพ: แบบมีสัดส่วน (ตัดกรอบ) หรือแบบกำหนดกว้าง/สูงอย่างเดียว (ไม่ตัด)
 export const SIZE_MODES = [
-  { id: '4:5', label: '4:5 แนวตั้ง', ratio: 4 / 5 },
+  // เรียงเป็นคู่ แนวตั้ง | แนวนอน
   { id: '2:3', label: '2:3 แนวตั้ง', ratio: 2 / 3 },
-  { id: '1:1', label: '1:1 จัตุรัส', ratio: 1 },
   { id: '3:2', label: '3:2 แนวนอน', ratio: 3 / 2 },
-  { id: '16:9', label: '16:9 กว้าง', ratio: 16 / 9 },
+  { id: '4:5', label: '4:5 แนวตั้ง', ratio: 4 / 5 },
+  { id: '5:4', label: '5:4 แนวนอน', ratio: 5 / 4 },
+  { id: '1:1', label: '1:1 จัตุรัส', ratio: 1 },
+  { id: '16:9', label: '16:9 แนวนอน', ratio: 16 / 9 },
   { id: 'w', label: 'กว้างเท่ากัน' },
   { id: 'h', label: 'สูงเท่ากัน' },
   { id: 'orig', label: 'ต้นฉบับ' },
@@ -13,7 +15,7 @@ export const SIZE_MODES = [
 export const SIZES = [1080, 1440, 2048];
 
 export function modeOf(id) {
-  return SIZE_MODES.find((m) => m.id === id) || SIZE_MODES[0];
+  return SIZE_MODES.find((m) => m.id === id) || SIZE_MODES.find((m) => m.id === '4:5');
 }
 
 export function isCropMode(id) {
