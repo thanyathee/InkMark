@@ -89,9 +89,16 @@
     <div class="pane" data-pane="export">
       <h3 class="pane-title">บันทึก</h3>
       <p id="exportSummary" class="summary"></p>
-      <p class="label">คำค้นหาในชื่อไฟล์</p>
-      <input id="prefixInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20">
-      <p class="hint" id="namePreview"></p>
+      <details class="name-box" id="nameBox">
+        <summary>
+          <span class="name-title">ชื่อไฟล์</span>
+          <span class="name-sum" id="namePreview"></span>
+        </summary>
+        <p class="label">คำค้นหาในชื่อไฟล์</p>
+        <input id="prefixInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20">
+        <p class="hint">รูปแบบ 00_คำค้นหา_วันที่ถ่าย_ลำดับ · ลำดับนับตามรูปในหน้าแอป เริ่มใหม่ทุกวันที่</p>
+      </details>
+      <p class="hint warn" id="noDateWarn" hidden></p>
       <div class="desk-only desk-export">
         <button id="deskZipBtn" class="btn primary block">ดาวน์โหลดทั้งหมด (.zip)</button>
         <button id="deskFilesBtn" class="btn outline block">ดาวน์โหลดทีละรูป</button>

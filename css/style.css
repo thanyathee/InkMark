@@ -351,3 +351,17 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 /* ขนาดรูป: เรียงเป็นคู่ แนวตั้ง | แนวนอน */
 .seg.mode-grid { display: grid; grid-template-columns: 1fr 1fr; }
 .seg.mode-grid button[data-value="orig"] { grid-column: 1 / -1; }
+
+/* ชื่อไฟล์: ยุบไว้เป็นบรรทัดสรุป แตะเพื่อแก้ */
+.name-box { margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; background: var(--bg); }
+.name-box summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 14px;
+}
+.name-box summary::-webkit-details-marker { display: none; }
+.name-box summary::after { content: "แก้ไข ›"; margin-left: auto; color: var(--primary); font-weight: 600; font-size: 13px; flex: none; }
+.name-box[open] summary::after { content: "เสร็จ"; }
+.name-title { font-weight: 600; flex: none; }
+.name-sum { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; }
+.name-box[open] { padding-bottom: 10px; }
+.name-box .label { margin-top: 2px; }
+.hint.warn { color: #b26a00; }

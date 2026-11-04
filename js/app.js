@@ -9,7 +9,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.3';
+const APP_VERSION = '2.4';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -944,7 +944,8 @@ function updateExportSummary() {
   $('#deskFilesBtn').disabled = !n;
   if (!n) {
     $('#exportSummary').textContent = 'ยังไม่มีรูป';
-    $('#namePreview').textContent = `ตัวอย่าง: ${['00', cleanPrefix(), todayStr(), '01'].filter(Boolean).join('_')}.jpg`;
+    $('#namePreview').textContent = `${['00', cleanPrefix(), todayStr(), '01'].filter(Boolean).join('_')}.jpg`;
+    $('#noDateWarn').hidden = true;
     return;
   }
   const first = state.items[0];
@@ -956,9 +957,11 @@ function updateExportSummary() {
         ? `${o.w}×${o.h} px`
         : `${S.mode === 'w' ? 'กว้าง' : 'สูง'} ${S.size} px`;
   $('#exportSummary').innerHTML = `<strong>${n} รูป</strong> · ${dims} · JPEG`;
+  $('#namePreview').textContent = fileNames()[0];
+  // คำเตือนแสดงไว้นอกส่วนที่ยุบ จะได้ไม่พลาด
   const noDate = state.items.filter((it) => !it.date).length;
-  $('#namePreview').textContent =
-    `ตัวอย่าง: ${fileNames()[0]}` + (noDate ? ` · ${noDate} รูปไม่มีวันที่ถ่าย ใช้วันนี้แทน` : '');
+  $('#noDateWarn').hidden = !noDate;
+  $('#noDateWarn').textContent = `⚠️ ${noDate} รูปไม่มีวันที่ถ่าย ใช้วันที่วันนี้แทน`;
 }
 
 // ชื่อไฟล์: 00_คำค้นหา_วันที่ถ่าย_ลำดับ (ลำดับตามหน้าแอป เริ่มนับใหม่ทุกวันที่)
