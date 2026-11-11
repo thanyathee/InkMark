@@ -1,4 +1,4 @@
-import { SIZE_MODES, SIZES, isCropMode, canFrame, outputSize, cropFrac } from './crop.js';
+import { SIZE_MODES, SIZES, modeOf, isCropMode, canFrame, outputSize, cropFrac } from './crop.js';
 import { TONE_SLIDERS, emptyTone, autoAdjust } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
@@ -9,7 +9,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.4';
+const APP_VERSION = '2.5';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -149,7 +149,10 @@ function rebuildGrid() {
     const badge = document.createElement('span');
     badge.className = 'edited';
     badge.textContent = 'ปรับเอง';
-    badges.append(badge);
+    const sizeB = document.createElement('span');
+    sizeB.className = 'own-size';
+    sizeB.hidden = true;
+    badges.append(badge, sizeB);
     if (!it.date) {
       const nd = document.createElement('span');
       nd.className = 'nodate';
@@ -171,7 +174,7 @@ function rebuildGrid() {
     });
     setupReorder(el);
     grid.append(el);
-    tiles.set(it.id, { el, canvas, num, badge });
+    tiles.set(it.id, { el, canvas, num, badge, size: sizeB });
   });
   const has = state.items.length > 0;
   $('#empty').hidden = has;
@@ -303,11 +306,17 @@ function removeItem(it) {
   if (!state.items.length) closeSheet();
 }
 
+// ขนาดเฉพาะรูป: ถ้ารูปนี้ตั้งไว้ ใช้ของรูปนี้ ไม่งั้นใช้ของทั้งชุด
+const modeFor = (it) => it.mode || S.mode;
+const settingsFor = (it) => (it.mode ? { ...S, mode: it.mode } : S);
+
 function renderTile(it) {
   const t = tiles.get(it.id);
   if (!t) return;
-  renderImage(it.thumb, it, state.settings, { maxSide: PREVIEW_MAX, into: t.canvas });
+  renderImage(it.thumb, it, settingsFor(it), { maxSide: PREVIEW_MAX, into: t.canvas });
   t.badge.hidden = !it.manual;
+  t.size.hidden = !it.mode;
+  if (it.mode) t.size.textContent = `ขนาด ${modeOf(it.mode).label}`;
 }
 
 // วาดพรีวิวทีละรูปโดยไม่ค้างหน้าจอ; ถ้ามีการเปลี่ยนค่าระหว่างวาด จะเริ่มรอบใหม่
@@ -678,21 +687,47 @@ function updateEditor() {
   $('#edTitle').textContent = `${state.editIndex + 1}/${state.items.length} · ${it.name}`;
   $('#edPrev').disabled = state.editIndex === 0;
   $('#edNext').disabled = state.editIndex === state.items.length - 1;
-  const frame = canFrame(S.mode);
-  $('#edFrame').hidden = !frame;
+  const mode = modeFor(it);
+  const frame = canFrame(mode);
+  $('#edZoomRow').hidden = !frame;
+  $('#edFrameHint').hidden = !frame;
   $('#edCropPane').hidden = !frame;
+  refreshEdMode();
   const zoomHow = touchUI ? 'สองนิ้วเพื่อซูม' : 'ลูกกลิ้งเพื่อซูม';
   $('#edCropLabel').textContent =
-    S.mode === 'orig'
+    mode === 'orig'
       ? `รูปเต็ม · ซูมแล้วลากกรอบเลือกส่วนที่ต้องการ · ${zoomHow}`
       : `รูปเต็ม · ลากกรอบเพื่อเลือกตำแหน่ง · ${zoomHow}`;
   $('#edZoom').value = it.zoom;
-  $('#edTabs [data-tab="frame"]').hidden = !frame;
-  setTab(frame ? ed.tab : 'tone');
+  setTab(ed.tab);
   refreshEdTone();
   renderNotes();
   drawEditor();
 }
+// ขนาดเฉพาะรูปนี้ ("" = ตามชุด)
+function refreshEdMode() {
+  const sel = $('#edMode');
+  sel.options[0].textContent = `ตามชุด (${modeOf(S.mode).label})`;
+  sel.value = cur().mode || '';
+  $('#edModeNote').hidden = !cur().mode;
+}
+$('#edMode').append(
+  ...SIZE_MODES.map((m) => {
+    const o = document.createElement('option');
+    o.value = m.id;
+    o.textContent = m.label;
+    return o;
+  }),
+);
+$('#edMode').addEventListener('change', (e) => {
+  const it = cur();
+  it.mode = e.target.value && e.target.value !== S.mode ? e.target.value : null;
+  Object.assign(it, { fx: 0.5, fy: 0.5, zoom: 1 });
+  invalidateExport();
+  updateExportSummary();
+  updateEditor();
+});
+
 function drawEditor() {
   drawCrop();
   drawPreview();
@@ -705,7 +740,7 @@ function queueEditorRender() {
 // ซ้าย: รูปเต็ม + กรอบที่จะตัด (เห็นว่าส่วนไหนถูกตัดออก)
 function drawCrop() {
   const it = cur();
-  if (!it || !canFrame(S.mode)) return;
+  if (!it || !canFrame(modeFor(it))) return;
   const src = ed.work || it.thumb;
   const box = ed.crop.parentElement;
   if (box.clientWidth < 10) return; // ซ่อนอยู่ (แท็บแสงสีบนมือถือ)
@@ -722,7 +757,7 @@ function drawCrop() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(src, 0, 0, cw, ch);
-  const f = cropFrac(S.mode, src.width, src.height, it);
+  const f = cropFrac(modeFor(it), src.width, src.height, it);
   const r = { x: f.x * cw, y: f.y * ch, w: f.w * cw, h: f.h * ch };
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.beginPath();
@@ -755,7 +790,7 @@ function drawPreview() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   // ระหว่างลาก/ซูม วาดความละเอียดต่ำลงให้ลื่น ปล่อยมือแล้ววาดเต็ม
   const maxSide = ed.interacting ? 720 : Math.min(WORK_MAX, Math.round(Math.max(sw, sh) * dpr));
-  renderImage(ed.work || it.thumb, it, S, { maxSide, tone: !ed.compare, into: ed.preview });
+  renderImage(ed.work || it.thumb, it, settingsFor(it), { maxSide, tone: !ed.compare, into: ed.preview });
   const w = ed.preview.width;
   const h = ed.preview.height;
   const s = Math.min(sw / w, sh / h);
@@ -773,7 +808,7 @@ function beginGesture() {
     fy: it.fy,
     zoom: it.zoom,
     pts,
-    f: cropFrac(S.mode, src.width, src.height, it),
+    f: cropFrac(modeFor(it), src.width, src.height, it),
     cw: ed.crop.clientWidth,
     ch: ed.crop.clientHeight,
     dist: pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0,
@@ -782,7 +817,7 @@ function beginGesture() {
   ed.crop.classList.add('dragging');
 }
 ed.crop.addEventListener('pointerdown', (e) => {
-  if (!canFrame(S.mode)) return;
+  if (!canFrame(modeFor(cur()))) return;
   ed.crop.setPointerCapture(e.pointerId);
   ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   beginGesture();
@@ -819,7 +854,7 @@ let wheelTimer = 0;
 ed.crop.addEventListener(
   'wheel',
   (e) => {
-    if (!canFrame(S.mode)) return;
+    if (!canFrame(modeFor(cur()))) return;
     e.preventDefault();
     const it = cur();
     it.zoom = clampN(it.zoom * Math.exp(-e.deltaY * 0.0015), 1, 4);
@@ -956,7 +991,9 @@ function updateExportSummary() {
       : isCropMode(S.mode)
         ? `${o.w}×${o.h} px`
         : `${S.mode === 'w' ? 'กว้าง' : 'สูง'} ${S.size} px`;
-  $('#exportSummary').innerHTML = `<strong>${n} รูป</strong> · ${dims} · JPEG`;
+  const own = state.items.filter((it) => it.mode).length;
+  $('#exportSummary').innerHTML =
+    `<strong>${n} รูป</strong> · ${dims} · JPEG` + (own ? `<br><small class="muted">${own} รูปใช้ขนาดเฉพาะรูป</small>` : '');
   $('#namePreview').textContent = fileNames()[0];
   // คำเตือนแสดงไว้นอกส่วนที่ยุบ จะได้ไม่พลาด
   const noDate = state.items.filter((it) => !it.date).length;
@@ -1013,7 +1050,7 @@ async function prepareFiles() {
       const it = items[i];
       // ตัดจากไฟล์ต้นฉบับโดยตรงทุกโหมด: บีบอัดรอบเดียว และไม่ต้องขยายภาพ
       const src = await loadOriginal(it);
-      const canvas = renderImage(src, it, S, { p3: true });
+      const canvas = renderImage(src, it, settingsFor(it), { p3: true });
       const blob = await toBlob(canvas, 'image/jpeg', JPEG_QUALITY);
       canvas.width = 0;
       if (src.close) src.close();

@@ -341,7 +341,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
   .ed-tabs button.on { color: var(--primary); background: var(--chip); }
   /* แท็บตำแหน่ง: เห็นรูปเต็ม+กรอบ · แท็บแสงสี: เห็นผลลัพธ์ */
   .editor.tab-tone #edCropPane { display: none; }
-  .editor.tab-frame #edCropPane ~ .ed-pane { display: none; }
+  .editor.tab-frame #edCropPane:not([hidden]) ~ .ed-pane { display: none; }
   .editor.tab-tone .ed-frame { display: none; }
   .editor.tab-frame .ed-tone, .editor.tab-frame .ed-actions { display: none; }
   .editor .ed-pane-label { display: none; }
@@ -365,3 +365,12 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .name-box[open] { padding-bottom: 10px; }
 .name-box .label { margin-top: 2px; }
 .hint.warn { color: #b26a00; }
+
+/* ขนาดเฉพาะรูป */
+.ed-mode-row select {
+  flex: 1; font: inherit; font-size: 15px; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+}
+.ed-mode-row .muted { flex: none; }
+#edModeNote { color: var(--primary); }
+.tile .badges .own-size { background: #6a3fb2; }
