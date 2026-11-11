@@ -374,3 +374,11 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .ed-mode-row .muted { flex: none; }
 #edModeNote { color: var(--primary); }
 .tile .badges .own-size { background: #6a3fb2; }
+
+/* ปรับให้ตรง */
+.geo-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.geo-box .auto-row .btn { padding: 8px 12px; font-size: 15px; }
+.geo-box .chips { display: flex; }
+.geo-title { margin: 0 0 6px; }
+/* ในหน้าแก้ไข: ข้อความแจ้งขึ้นด้านบน ไม่บังเครื่องมือ */
+body.editing .toast { top: calc(env(safe-area-inset-top, 0px) + 64px); bottom: auto; }

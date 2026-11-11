@@ -3,6 +3,7 @@ import { outputSize, cropFrac } from './crop.js';
 import { analyzeAuto, buildParams, applyTone, emptyTone } from './tone.js';
 import { readShotDate } from './exif.js';
 import { drawWatermark } from './watermark.js';
+import { hasGeom, geoParams } from './geometry.js';
 
 // Safari บน iPhone จำกัดขนาด canvas (~16 ล้านพิกเซล) จึงเก็บต้นฉบับไว้ไม่เกินนี้
 const SOURCE_MAX = 3072;
@@ -70,6 +71,72 @@ function drawScaled(ctx, src, r, W, H, p3 = false) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(cur, x, y, w, h, 0, 0, W, H);
   if (cur !== src) cur.width = 0;
+}
+
+// วาดรูปที่หมุน/แก้มุมมองแล้ว: แต่ละพิกเซลผลลัพธ์ย้อนไปหาตำแหน่งในต้นฉบับ (bilinear)
+// f = กรอบตัด (สัดส่วน 0..1 ของรูปที่ปรับตรงแล้ว ซึ่งขนาดเท่าต้นฉบับ)
+function drawWarped(ctx, src, sw, sh, geo, f, W, H, p3) {
+  // ย่อต้นฉบับก่อนให้ใกล้ขนาดที่ต้องใช้ (คมกว่า และไม่กินหน่วยความจำ)
+  const need = W / (f.w * sw);
+  const ps = Math.min(1, need * 1.3, Math.sqrt(16e6 / (sw * sh)));
+  const pw = Math.max(2, Math.round(sw * ps));
+  const ph = Math.max(2, Math.round(sh * ps));
+  const pre = document.createElement('canvas');
+  pre.width = pw;
+  pre.height = ph;
+  const pctx = ctx2d(pre, p3, { willReadFrequently: true });
+  drawScaled(pctx, src, { x: 0, y: 0, w: sw, h: sh }, pw, ph, p3);
+  const sd = pctx.getImageData(0, 0, pw, ph).data;
+  pre.width = 0;
+  const out = ctx.createImageData(W, H);
+  const od = out.data;
+  const P = geoParams(geo, sw, sh);
+  const { cos, sin, a, b, cx, cy, k } = P;
+  const sx0 = pw / sw;
+  const sy0 = ph / sh;
+  for (let v = 0; v < H; v++) {
+    const gy = (f.y + ((v + 0.5) / H) * f.h) * sh;
+    const py = (gy - cy) / k;
+    for (let u = 0; u < W; u++) {
+      const gx = (f.x + ((u + 0.5) / W) * f.w) * sw;
+      const px = (gx - cx) / k;
+      const rx = px * cos - py * sin;
+      const ry = px * sin + py * cos;
+      let x = (cx + rx * (1 + (a * ry) / cy)) * sx0 - 0.5;
+      let y = (cy + ry * (1 + (b * rx) / cx)) * sy0 - 0.5;
+      if (x < 0) x = 0;
+      else if (x > pw - 1.001) x = pw - 1.001;
+      if (y < 0) y = 0;
+      else if (y > ph - 1.001) y = ph - 1.001;
+      const x0 = x | 0;
+      const y0 = y | 0;
+      const tx = x - x0;
+      const ty = y - y0;
+      const i00 = (y0 * pw + x0) * 4;
+      const i10 = i00 + 4;
+      const i01 = i00 + pw * 4;
+      const i11 = i01 + 4;
+      const o = (v * W + u) * 4;
+      for (let c = 0; c < 3; c++) {
+        const top = sd[i00 + c] + (sd[i10 + c] - sd[i00 + c]) * tx;
+        const bot = sd[i01 + c] + (sd[i11 + c] - sd[i01 + c]) * tx;
+        od[o + c] = top + (bot - top) * ty;
+      }
+      od[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+// รูปเต็มที่ปรับตรงแล้ว (ไว้แสดงในช่อง "รูปเต็ม" ของหน้าแก้ไข)
+export function renderStraight(src, item, into, W, H) {
+  into.width = W;
+  into.height = H;
+  const ctx = into.getContext('2d', { willReadFrequently: true });
+  const sw = src.width || src.naturalWidth;
+  const sh = src.height || src.naturalHeight;
+  drawWarped(ctx, src, sw, sh, item.geo, { x: 0, y: 0, w: 1, h: 1 }, W, H, false);
+  return into;
 }
 
 // แปลงไฟล์เป็นรายการรูป: เก็บต้นฉบับย่อ (JPEG) + รูปย่อสำหรับพรีวิว + ผลวิเคราะห์แสง + วันที่ถ่าย
@@ -172,7 +239,8 @@ export function renderImage(src, item, settings, opts = {}) {
   c.width = W;
   c.height = H;
   const ctx = ctx2d(c, opts.p3 && !opts.into, { willReadFrequently: true });
-  drawScaled(ctx, src, { x: f.x * sw, y: f.y * sh, w: f.w * sw, h: f.h * sh }, W, H, opts.p3);
+  if (hasGeom(item)) drawWarped(ctx, src, sw, sh, item.geo, f, W, H, opts.p3);
+  else drawScaled(ctx, src, { x: f.x * sw, y: f.y * sh, w: f.w * sw, h: f.h * sh }, W, H, opts.p3);
 
   if (opts.tone !== false) {
     const p = buildParams(item.auto, settings.global, item.tone);

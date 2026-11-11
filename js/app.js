@@ -2,14 +2,15 @@ import { SIZE_MODES, SIZES, modeOf, isCropMode, canFrame, outputSize, cropFrac }
 import { TONE_SLIDERS, emptyTone, autoAdjust } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
-import { prepareItem, loadOriginal, renderImage, toBlob, workCanvas } from './render.js';
+import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas } from './render.js';
+import { GEO_SLIDERS, hasGeom, detectTilt } from './geometry.js';
 
 const $ = (s) => document.querySelector(s);
 const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.5';
+const APP_VERSION = '2.6';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -658,6 +659,7 @@ function openEditor(i) {
   state.editIndex = i;
   $('#editor').hidden = false;
   document.body.style.overflow = 'hidden';
+  document.body.classList.add('editing');
   updateEditor();
   ensureWork(cur());
 }
@@ -665,6 +667,7 @@ function closeEditor() {
   const it = cur();
   $('#editor').hidden = true;
   document.body.style.overflow = '';
+  document.body.classList.remove('editing');
   state.editIndex = -1;
   if (ed.work) ed.work.width = 0;
   ed.work = null;
@@ -693,6 +696,7 @@ function updateEditor() {
   $('#edFrameHint').hidden = !frame;
   $('#edCropPane').hidden = !frame;
   refreshEdMode();
+  refreshGeo();
   const zoomHow = touchUI ? 'สองนิ้วเพื่อซูม' : 'ลูกกลิ้งเพื่อซูม';
   $('#edCropLabel').textContent =
     mode === 'orig'
@@ -704,6 +708,82 @@ function updateEditor() {
   renderNotes();
   drawEditor();
 }
+// ---------- ปรับให้ตรง: เอียง / มุมมอง ----------
+ed.geoKey = 'r';
+const geoEls = {};
+const geoOf = (it) => it.geo || (it.geo = { r: 0, v: 0, h: 0 });
+const fmtGeo = (sl, v) => (sl.unit ? `${v > 0 ? '+' : ''}${(+v).toFixed(1)}${sl.unit}` : fmt(v));
+for (const sl of GEO_SLIDERS) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.innerHTML = `${sl.label} <small></small>`;
+  b.addEventListener('click', () => {
+    ed.geoKey = sl.key;
+    refreshGeo();
+  });
+  b.addEventListener('dblclick', () => {
+    geoOf(cur())[sl.key] = 0;
+    markManual(cur());
+    refreshGeo();
+    queueEditorRender();
+  });
+  geoEls[sl.key] = b;
+  $('#geoChips').append(b);
+}
+function refreshGeo() {
+  const it = cur();
+  if (!it) return;
+  const g = geoOf(it);
+  for (const sl of GEO_SLIDERS) {
+    const el = geoEls[sl.key];
+    el.querySelector('small').textContent = fmtGeo(sl, g[sl.key] || 0);
+    el.classList.toggle('on', ed.geoKey === sl.key);
+    el.classList.toggle('changed', !!g[sl.key]);
+  }
+  const sl = GEO_SLIDERS.find((x) => x.key === ed.geoKey);
+  const one = $('#geoOne');
+  one.min = sl.min;
+  one.max = sl.max;
+  one.step = sl.step;
+  one.value = g[sl.key] || 0;
+}
+$('#geoOne').addEventListener('input', (e) => {
+  const it = cur();
+  geoOf(it)[ed.geoKey] = +e.target.value;
+  const sl = GEO_SLIDERS.find((x) => x.key === ed.geoKey);
+  geoEls[ed.geoKey].querySelector('small').textContent = fmtGeo(sl, +e.target.value);
+  geoEls[ed.geoKey].classList.toggle('changed', +e.target.value !== 0);
+  ed.showGrid = true;
+  ed.interacting = true;
+  markManual(it);
+  queueEditorRender();
+});
+$('#geoOne').addEventListener('change', () => {
+  ed.showGrid = false;
+  ed.interacting = false;
+  queueEditorRender();
+});
+$('#edStraight').addEventListener('click', () => {
+  const it = cur();
+  const tilt = detectTilt(it.thumb); // วัดจากรูปขนาด ~720px แม่นที่สุด
+  if (tilt === null) {
+    toast('ไม่พบเส้นตรงชัดเจนในรูปนี้ ลองปรับเองด้วยแถบ "เอียง"');
+    return;
+  }
+  geoOf(it).r = tilt;
+  ed.geoKey = 'r';
+  markManual(it);
+  refreshGeo();
+  queueEditorRender();
+  toast(tilt ? `📐 หมุนแก้ ${tilt > 0 ? '+' : ''}${tilt.toFixed(1)}°` : '📐 รูปนี้ตรงอยู่แล้ว');
+});
+$('#edGeoReset').addEventListener('click', () => {
+  cur().geo = { r: 0, v: 0, h: 0 };
+  markManual(cur());
+  refreshGeo();
+  queueEditorRender();
+});
+
 // ขนาดเฉพาะรูปนี้ ("" = ตามชุด)
 function refreshEdMode() {
   const sel = $('#edMode');
@@ -756,7 +836,14 @@ function drawCrop() {
   const ctx = c.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(src, 0, 0, cw, ch);
+  if (hasGeom(it)) {
+    // แสดงรูปเต็มที่ปรับตรงแล้ว กรอบตัดจะได้ตรงกับผลลัพธ์
+    const q = ed.interacting ? 0.6 : 1;
+    ed.straight = renderStraight(src, it, ed.straight || document.createElement('canvas'), Math.round(cw * dpr * q), Math.round(ch * dpr * q));
+    ctx.drawImage(ed.straight, 0, 0, cw, ch);
+  } else {
+    ctx.drawImage(src, 0, 0, cw, ch);
+  }
   const f = cropFrac(modeFor(it), src.width, src.height, it);
   const r = { x: f.x * cw, y: f.y * ch, w: f.w * cw, h: f.h * ch };
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -777,6 +864,19 @@ function drawCrop() {
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 2;
   ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+  if (ed.showGrid) {
+    // ตารางละเอียดช่วยเล็งเส้นตรงตอนหมุน
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let k = 1; k < 8; k++) {
+      ctx.moveTo((cw * k) / 8, 0);
+      ctx.lineTo((cw * k) / 8, ch);
+      ctx.moveTo(0, (ch * k) / 8);
+      ctx.lineTo(cw, (ch * k) / 8);
+    }
+    ctx.stroke();
+  }
 }
 
 // ขวา: ผลลัพธ์จริง (ตัด + แสงสี + ลายน้ำ)
