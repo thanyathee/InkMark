@@ -10,7 +10,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -18,6 +18,7 @@ const DEFAULTS = {
   mode: '4:5',
   size: 1080,
   autoImport: true,
+  autoTrim: true,
   prefix: 'ADS',
   global: emptyTone(),
   wm: { on: true, text: '#TISCOFOUNDATION', pos: 'br', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
@@ -87,7 +88,7 @@ async function addFiles(fileList) {
     progress('กำลังโหลดรูป', i, files.length);
     await nextFrame();
     try {
-      const it = await prepareItem(files[i]);
+      const it = await prepareItem(files[i], { trim: state.settings.autoTrim });
       if (state.settings.autoImport) applyAuto(it);
       state.items.push(it);
     } catch {
@@ -154,6 +155,12 @@ function rebuildGrid() {
     sizeB.className = 'own-size';
     sizeB.hidden = true;
     badges.append(badge, sizeB);
+    if (it.trim) {
+      const tb = document.createElement('span');
+      tb.className = 'trimmed';
+      tb.textContent = 'ตัดขอบดำแล้ว';
+      badges.append(tb);
+    }
     if (!it.date) {
       const nd = document.createElement('span');
       nd.className = 'nodate';
@@ -697,6 +704,8 @@ function updateEditor() {
   $('#edCropPane').hidden = !frame;
   refreshEdMode();
   refreshGeo();
+  $('#edTrimRow').hidden = !it.trimFound;
+  $('#edTrim').checked = !!it.trim;
   const zoomHow = touchUI ? 'สองนิ้วเพื่อซูม' : 'ลูกกลิ้งเพื่อซูม';
   $('#edCropLabel').textContent =
     mode === 'orig'
@@ -782,6 +791,28 @@ $('#edGeoReset').addEventListener('click', () => {
   markManual(cur());
   refreshGeo();
   queueEditorRender();
+});
+
+// ตัดขอบดำ: เปิด/ปิดรายรูป (สร้างรูปใหม่จากไฟล์ต้นฉบับ ค่าที่ปรับไว้ยังอยู่)
+async function setTrim(it, on) {
+  const n = await prepareItem(it.file, { trim: on });
+  it.thumb.width = 0;
+  Object.assign(it, { blob: n.blob, w: n.w, h: n.h, thumb: n.thumb, trim: n.trim, trimFound: n.trimFound, stats: n.stats });
+  Object.assign(it, { fx: 0.5, fy: 0.5, zoom: 1 });
+  if (it.auto) applyAuto(it); // วิเคราะห์แสงใหม่ (ขอบดำทำให้ค่าเพี้ยน)
+  invalidateExport();
+  rebuildGrid();
+  if (state.editIndex >= 0 && cur() === it) {
+    ed.workId = null;
+    updateEditor();
+    ensureWork(it);
+  }
+}
+$('#edTrim').addEventListener('change', (e) => setTrim(cur(), e.target.checked));
+$('#autoTrim').checked = S.autoTrim;
+$('#autoTrim').addEventListener('change', (e) => {
+  S.autoTrim = e.target.checked;
+  saveSettings();
 });
 
 // ขนาดเฉพาะรูปนี้ ("" = ตามชุด)

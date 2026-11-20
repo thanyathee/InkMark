@@ -4,6 +4,7 @@ import { analyzeAuto, buildParams, applyTone, emptyTone } from './tone.js';
 import { readShotDate } from './exif.js';
 import { drawWatermark } from './watermark.js';
 import { hasGeom, geoParams } from './geometry.js';
+import { detectBorders } from './trim.js';
 
 // Safari บน iPhone จำกัดขนาด canvas (~16 ล้านพิกเซล) จึงเก็บต้นฉบับไว้ไม่เกินนี้
 const SOURCE_MAX = 3072;
@@ -40,14 +41,15 @@ export function toBlob(canvas, type, quality) {
   );
 }
 
-function scaledCanvas(src, sw, sh, maxSide) {
-  const s = Math.min(1, maxSide / Math.max(sw, sh));
+function scaledCanvas(src, sw, sh, maxSide, region = { x: 0, y: 0, w: sw, h: sh }) {
+  const s = Math.min(1, maxSide / Math.max(region.w, region.h));
   const c = document.createElement('canvas');
-  c.width = Math.round(sw * s);
-  c.height = Math.round(sh * s);
-  drawScaled(c.getContext('2d'), src, { x: 0, y: 0, w: sw, h: sh }, c.width, c.height);
+  c.width = Math.max(1, Math.round(region.w * s));
+  c.height = Math.max(1, Math.round(region.h * s));
+  drawScaled(c.getContext('2d'), src, region, c.width, c.height);
   return c;
 }
+const trimRegion = (t, w, h) => ({ x: t.x * w, y: t.y * h, w: t.w * w, h: t.h * h });
 
 // ย่อทีละครึ่งเมื่อย่อมากๆ เพื่อไม่ให้ภาพแตกเป็นหยัก
 function drawScaled(ctx, src, r, W, H, p3 = false) {
@@ -140,13 +142,16 @@ export function renderStraight(src, item, into, W, H) {
 }
 
 // แปลงไฟล์เป็นรายการรูป: เก็บต้นฉบับย่อ (JPEG) + รูปย่อสำหรับพรีวิว + ผลวิเคราะห์แสง + วันที่ถ่าย
-export async function prepareItem(file) {
+// opts.trim: ตัดขอบดำอัตโนมัติ (ภาพแคปหน้าจอ)
+export async function prepareItem(file, opts = {}) {
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
     const w0 = img.naturalWidth;
     const h0 = img.naturalHeight;
-    const full = scaledCanvas(img, w0, h0, SOURCE_MAX);
+    const found = detectBorders(img, w0, h0);
+    const trim = opts.trim && found ? found : null;
+    const full = scaledCanvas(img, w0, h0, SOURCE_MAX, trim ? trimRegion(trim, w0, h0) : undefined);
     const blob = await toBlob(full, 'image/jpeg', 0.95);
     const thumb = scaledCanvas(full, full.width, full.height, THUMB_MAX);
     const item = {
@@ -157,6 +162,8 @@ export async function prepareItem(file) {
       w: full.width,
       h: full.height,
       thumb,
+      trim, // กรอบที่ตัดขอบดำแล้ว (สัดส่วนของต้นฉบับ) หรือ null
+      trimFound: found, // พบขอบดำไหม (ไว้เปิด/ปิดได้ภายหลัง)
       stats: analyzeAuto(thumb),
       date: await readShotDate(file), // 'YYYYMMDD' หรือ null
       fx: 0.5,
@@ -178,7 +185,12 @@ export async function loadOriginal(item) {
   if (item.file) {
     const url = URL.createObjectURL(item.file);
     try {
-      return await loadImage(url);
+      const img = await loadImage(url);
+      if (!item.trim) return img;
+      // ตัดขอบดำจากไฟล์ต้นฉบับ (ไม่เกินเพดานพิกเซลของ iPhone)
+      const r = trimRegion(item.trim, img.naturalWidth, img.naturalHeight);
+      const s = Math.min(1, Math.sqrt(CANVAS_MAX_PX / (r.w * r.h)));
+      return scaledCanvas(img, img.naturalWidth, img.naturalHeight, Math.max(r.w, r.h) * s, r);
     } catch {
       /* ใช้ blob แทน */
     } finally {

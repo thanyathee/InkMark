@@ -382,3 +382,4 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .geo-title { margin: 0 0 6px; }
 /* ในหน้าแก้ไข: ข้อความแจ้งขึ้นด้านบน ไม่บังเครื่องมือ */
 body.editing .toast { top: calc(env(safe-area-inset-top, 0px) + 64px); bottom: auto; }
+.tile .badges .trimmed { background: #2e7d32; }

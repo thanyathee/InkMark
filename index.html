@@ -51,6 +51,10 @@
       <p class="label" id="sizeLabel">ความกว้าง (px)</p>
       <div class="seg" id="sizeSeg"></div>
       <p class="hint" id="sizeHint"></p>
+      <label class="switch-row">
+        <span><strong>ตัดขอบดำอัตโนมัติ</strong><br><small>สำหรับภาพแคปหน้าจอที่ติดพื้นหลังดำ · ทำตอนเพิ่มรูป</small></span>
+        <input type="checkbox" id="autoTrim" class="switch">
+      </label>
     </div>
 
     <div class="pane" data-pane="tone">
@@ -149,6 +153,10 @@
             <select id="edMode"><option value=""></option></select>
           </div>
           <p class="hint" id="edModeNote" hidden>รูปนี้ใช้ขนาดเฉพาะ รูปอื่นยังใช้ขนาดตามชุด</p>
+          <label class="switch-row" id="edTrimRow" hidden>
+            <span><strong>ตัดขอบดำ</strong> <small>(ภาพแคปหน้าจอ)</small></span>
+            <input type="checkbox" id="edTrim" class="switch">
+          </label>
           <p class="hint mobile-only" id="edFrameHint">ลากกรอบสีขาวเพื่อเลือกตำแหน่ง · ใช้สองนิ้วซูมได้</p>
           <div class="row" id="edZoomRow">
             <span class="muted">ซูม</span>
