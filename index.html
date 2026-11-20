@@ -24,8 +24,9 @@
       </div>
     </div>
     <div class="seg mode-switch" id="modeSwitch">
-      <button type="button" data-mode="post"># แต่งรูปโพสต์</button>
+      <button type="button" data-mode="post"># แต่งโพสต์</button>
       <button type="button" data-mode="trim">✂︎ ตัดขอบ</button>
+      <button type="button" data-mode="stitch">⧉ ต่อภาพ</button>
     </div>
   </header>
 
@@ -85,6 +86,33 @@
         <button id="tEdNone" class="btn outline">ไม่ตัด</button>
       </div>
       <p class="hint">ลากเส้นขอบสีชมพูเพื่อปรับเอง · ลากกลางกรอบเพื่อเลื่อน</p>
+    </div>
+  </div>
+
+  <!-- โหมดต่อภาพ -->
+  <section id="stitchApp" class="stitch-app">
+    <section id="stitchEmpty" class="empty">
+      <div class="empty-mark">⧉</div>
+      <h1>ต่อภาพแคปหน้าจอยาว</h1>
+      <p>เลือกภาพแคปหลายภาพ แอปหาส่วนที่ซ้อนกันแล้วต่อเป็นภาพยาวภาพเดียว</p>
+      <label class="btn primary big">เลือกภาพแคป<input id="stitchInput" type="file" accept="image/*" multiple hidden></label>
+      <p class="hint">เลือกเรียงจากบนลงล่าง (สลับลำดับทีหลังได้) · บันทึกเป็น PNG ชื่อ ภาพแรก_stitch.png</p>
+    </section>
+    <div id="stitchWork" hidden>
+      <p class="grid-hint">ลำดับภาพ (บน → ล่าง) · ใช้ ◀ ▶ สลับ</p>
+      <div id="stitchStrip" class="stitch-strip"></div>
+      <div class="stitch-layout">
+        <div id="stitchPreviewBox" class="stitch-preview"><canvas id="stitchCanvas"></canvas></div>
+        <div id="stitchSeams" class="stitch-seams"></div>
+      </div>
+    </div>
+  </section>
+  <div id="stitchBar" class="trim-bar" hidden>
+    <span id="stitchSummary" class="trim-summary"></span>
+    <div class="trim-actions">
+      <button id="stitchPrepare" class="btn primary touch-only">ต่อภาพและบันทึก</button>
+      <button id="stitchShare" class="btn primary touch-only" hidden>บันทึกลงคลังรูป / แชร์</button>
+      <button id="stitchDownload" class="btn primary desk-only">ดาวน์โหลดภาพยาว (.png)</button>
     </div>
   </div>
 

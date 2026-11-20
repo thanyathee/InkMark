@@ -1,0 +1,298 @@
+// โหมดต่อภาพ: ต่อภาพแคปหน้าจอหลายภาพเป็นภาพยาวภาพเดียว (แทนแอป Tailor)
+// เรียงจากบนลงล่างตามลำดับที่เลือก (สลับลำดับได้) · หาส่วนซ้อนอัตโนมัติ · ปรับรอยต่อเองได้
+// บันทึกเป็น PNG ความละเอียดเต็ม ชื่อ = ชื่อภาพแรก_stitch.png
+import { loadImage, toBlob } from './render.js';
+import { makeSig, matchPair } from './stitch.js';
+
+const $ = (s) => document.querySelector(s);
+const THUMB_W = 720;
+const MAX_PX = 16e6; // เพดานพิกเซลของ canvas บน iPhone
+
+export function initStitchMode(h) {
+  const st = { items: [], seams: [], exported: null };
+  let nextId = 1;
+  const invalidate = () => {
+    st.exported = null;
+    $('#stitchPrepare').hidden = false;
+    $('#stitchShare').hidden = true;
+  };
+
+  async function addFiles(list) {
+    const files = [...list].filter((f) => f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+    if (!files.length) return;
+    for (let i = 0; i < files.length; i++) {
+      h.progress('กำลังโหลดภาพ', i, files.length);
+      await h.nextFrame();
+      const f = files[i];
+      const url = URL.createObjectURL(f);
+      try {
+        const img = await loadImage(url);
+        const w = img.naturalWidth;
+        const hh = img.naturalHeight;
+        const s = Math.min(1, THUMB_W / w);
+        const thumb = document.createElement('canvas');
+        thumb.width = Math.round(w * s);
+        thumb.height = Math.round(hh * s);
+        const tctx = thumb.getContext('2d');
+        tctx.imageSmoothingQuality = 'high';
+        tctx.drawImage(img, 0, 0, thumb.width, thumb.height);
+        st.items.push({ id: nextId++, file: f, name: f.name || `screenshot-${nextId}.png`, w, h: hh, thumb, sig: makeSig(img) });
+      } catch {
+        h.toast(`เปิดไม่ได้: ${f.name}`);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+    h.progressDone();
+    rematch();
+    const bad = st.seams.filter((s) => !s.found).length;
+    if (st.items.length > 1)
+      h.toast(bad ? `⚠️ ต่อได้ แต่หาส่วนซ้อนไม่เจอ ${bad} รอยต่อ — ตรวจด้านขวา/ด้านล่าง` : `⧉ ต่อภาพสำเร็จ ${st.items.length} ภาพ`, 3500);
+  }
+
+  // คำนวณรอยต่อใหม่ทุกคู่ (เมื่อเพิ่ม/ลบ/สลับลำดับ)
+  function rematch() {
+    st.seams = [];
+    for (let i = 0; i < st.items.length - 1; i++) {
+      const m = matchPair(st.items[i].sig, st.items[i + 1].sig);
+      st.seams.push({ ...m, adj: 0 });
+    }
+    invalidate();
+    render();
+  }
+
+  // ช่วงแถวที่ใช้จากแต่ละภาพ (พิกเซลจริง)
+  function pieces() {
+    const n = st.items.length;
+    return st.items.map((it, i) => {
+      let y0 = i === 0 ? 0 : st.seams[i - 1].startB + st.seams[i - 1].adj;
+      let y1 = i === n - 1 ? it.h : st.seams[i].cutA;
+      y0 = Math.max(0, Math.min(it.h - 1, y0));
+      y1 = Math.max(y0 + 1, Math.min(it.h, y1));
+      return { it, y0, y1 };
+    });
+  }
+  function outSize() {
+    if (!st.items.length) return { W: 0, H: 0 };
+    const W = st.items[0].w;
+    const H = pieces().reduce((a, p) => a + ((p.y1 - p.y0) * W) / p.it.w, 0);
+    return { W, H: Math.round(H) };
+  }
+
+  // ---------- หน้าจอ ----------
+  function render() {
+    const n = st.items.length;
+    $('#stitchEmpty').hidden = n > 0;
+    $('#stitchWork').hidden = !n;
+    $('#stitchBar').hidden = n < 2;
+    h.setTop(n);
+    renderStrip();
+    renderPreview();
+    renderSeams();
+    const { W, H } = outSize();
+    const scaled = W * H > MAX_PX;
+    $('#stitchSummary').innerHTML =
+      `<strong>${n} ภาพ</strong> → ${W}×${H} px` + (scaled ? '<br><small class="muted">ยาวมาก จะย่อลงให้พอดีกับ iPhone</small>' : '');
+  }
+
+  function renderStrip() {
+    const strip = $('#stitchStrip');
+    strip.textContent = '';
+    st.items.forEach((it, i) => {
+      const el = document.createElement('div');
+      el.className = 'strip-item';
+      const c = document.createElement('canvas');
+      const s = 84 / it.thumb.width;
+      c.width = 84;
+      c.height = Math.round(Math.min(it.thumb.height * s, 150));
+      c.getContext('2d').drawImage(it.thumb, 0, 0, it.thumb.width, c.height / s, 0, 0, 84, c.height);
+      const num = document.createElement('span');
+      num.className = 'num';
+      num.textContent = i + 1;
+      const bar = document.createElement('div');
+      bar.className = 'strip-btns';
+      const mk = (txt, label, fn, dis) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = txt;
+        b.setAttribute('aria-label', label);
+        b.disabled = dis;
+        b.addEventListener('click', fn);
+        bar.append(b);
+      };
+      const move = (d) => () => {
+        const j = i + d;
+        [st.items[i], st.items[j]] = [st.items[j], st.items[i]];
+        rematch();
+      };
+      mk('◀', 'เลื่อนขึ้นก่อน', move(-1), i === 0);
+      mk('✕', 'ลบภาพนี้', () => {
+        st.items[i].thumb.width = 0;
+        st.items.splice(i, 1);
+        rematch();
+      });
+      mk('▶', 'เลื่อนไปหลัง', move(1), i === st.items.length - 1);
+      el.append(c, num, bar);
+      strip.append(el);
+    });
+  }
+
+  function renderPreview() {
+    const cv = $('#stitchCanvas');
+    if (!st.items.length) return;
+    const box = $('#stitchPreviewBox');
+    const cssW = Math.min(box.clientWidth - 16 || 360, 420);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const PW = Math.round(cssW * dpr);
+    const ps = pieces();
+    const total = ps.reduce((a, p) => a + ((p.y1 - p.y0) * PW) / p.it.w, 0);
+    const PH = Math.min(Math.round(total), 30000);
+    cv.width = PW;
+    cv.height = PH;
+    cv.style.width = `${cssW}px`;
+    cv.style.height = `${Math.round(PH / dpr)}px`;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    let y = 0;
+    const seamsY = [];
+    ps.forEach((p, i) => {
+      const k = p.it.thumb.width / p.it.w; // พิกเซลจริง → รูปย่อ
+      const dh = ((p.y1 - p.y0) * PW) / p.it.w;
+      ctx.drawImage(p.it.thumb, 0, p.y0 * k, p.it.thumb.width, (p.y1 - p.y0) * k, 0, y, PW, dh);
+      y += dh;
+      if (i < ps.length - 1) seamsY.push(y);
+    });
+    // เส้นรอยต่อ
+    seamsY.forEach((sy, i) => {
+      const ok = st.seams[i].found;
+      ctx.strokeStyle = ok ? 'rgba(46,125,50,0.9)' : 'rgba(230,81,0,0.95)';
+      ctx.lineWidth = 2 * dpr;
+      ctx.setLineDash([8 * dpr, 6 * dpr]);
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(PW, sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = ok ? 'rgba(46,125,50,0.9)' : 'rgba(230,81,0,0.95)';
+      ctx.font = `600 ${12 * dpr}px -apple-system, sans-serif`;
+      const label = ` รอยต่อ ${i + 1} `;
+      const tw = ctx.measureText(label).width;
+      ctx.fillRect(PW - tw - 6 * dpr, sy - 18 * dpr, tw, 16 * dpr);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, PW - tw - 6 * dpr, sy - 6 * dpr);
+    });
+    st.seamY = seamsY.map((v) => v / dpr);
+  }
+
+  function renderSeams() {
+    const box = $('#stitchSeams');
+    box.textContent = '';
+    if (st.seams.length === 0) {
+      box.innerHTML = '<p class="hint">เพิ่มภาพอย่างน้อย 2 ภาพเพื่อต่อกัน</p>';
+      return;
+    }
+    st.seams.forEach((sm, i) => {
+      const row = document.createElement('div');
+      row.className = `seam ${sm.found ? 'ok' : 'warn'}`;
+      row.innerHTML = `
+        <div class="seam-head">
+          <strong>รอยต่อ ${i + 1}</strong> <span class="muted">ภาพ ${i + 1} → ${i + 2}</span>
+          <button type="button" class="ghost small seam-go">ดู</button>
+        </div>
+        <p class="seam-status">${sm.found ? '✓ หาส่วนซ้อนเจอ ต่ออัตโนมัติ' : '⚠️ หาส่วนซ้อนไม่เจอ ต่อแบบชนกัน — เลื่อนปรับเองได้'}</p>
+        <label class="sl"><span>เลื่อนรอยต่อ</span><output>${sm.adj > 0 ? '+' : ''}${sm.adj} px</output>
+          <input type="range" min="-600" max="600" step="2" value="${sm.adj}"></label>`;
+      const input = row.querySelector('input');
+      const out = row.querySelector('output');
+      input.addEventListener('input', () => {
+        sm.adj = +input.value;
+        out.textContent = `${sm.adj > 0 ? '+' : ''}${sm.adj} px`;
+        invalidate();
+        renderPreview();
+        const { W, H } = outSize();
+        $('#stitchSummary').innerHTML = `<strong>${st.items.length} ภาพ</strong> → ${W}×${H} px`;
+      });
+      input.addEventListener('dblclick', () => {
+        input.value = 0;
+        input.dispatchEvent(new Event('input'));
+      });
+      row.querySelector('.seam-go').addEventListener('click', () => {
+        const pb = $('#stitchPreviewBox');
+        const y = (st.seamY?.[i] || 0) - pb.clientHeight / 2;
+        pb.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+      });
+      box.append(row);
+    });
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'เลื่อน + = ตัดส่วนซ้ำของภาพล่างออกมากขึ้น · − = เก็บไว้มากขึ้น · แตะสองครั้งที่แถบเพื่อกลับเป็น 0';
+    box.append(hint);
+  }
+
+  window.addEventListener('resize', () => h.isActive() && st.items.length && renderPreview());
+
+  // ---------- บันทึก ----------
+  function outName() {
+    const m = /^(.*?)(\.[^.]+)?$/.exec(st.items[0].name);
+    return `${m[1]}_stitch.png`;
+  }
+  async function prepare() {
+    if (st.exported) return st.exported;
+    try {
+      const ps = pieces();
+      let { W, H } = outSize();
+      const s = W * H > MAX_PX ? Math.sqrt(MAX_PX / (W * H)) : 1;
+      const OW = Math.round(W * s);
+      const OH = Math.round(H * s);
+      const c = document.createElement('canvas');
+      c.width = OW;
+      c.height = OH;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      let y = 0;
+      for (let i = 0; i < ps.length; i++) {
+        h.progress('กำลังต่อภาพ', i, ps.length);
+        await h.nextFrame();
+        const p = ps[i];
+        const url = URL.createObjectURL(p.it.file);
+        try {
+          const img = await loadImage(url);
+          const dh = ((p.y1 - p.y0) * OW) / p.it.w;
+          ctx.drawImage(img, 0, p.y0, p.it.w, p.y1 - p.y0, 0, Math.round(y), OW, Math.ceil(dh));
+          y += dh;
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+      const blob = await toBlob(c, 'image/png');
+      c.width = 0;
+      h.progressDone();
+      st.exported = [new File([blob], outName(), { type: 'image/png' })];
+      return st.exported;
+    } catch (err) {
+      h.progressDone();
+      h.toast('ต่อภาพไม่สำเร็จ', 4000);
+      console.error(err);
+      return null;
+    }
+  }
+  $('#stitchPrepare').addEventListener('click', async () => {
+    if (!(await prepare())) return;
+    $('#stitchPrepare').hidden = true;
+    $('#stitchShare').hidden = false;
+  });
+  $('#stitchShare').addEventListener('click', () => st.exported && h.shareFiles(st.exported));
+  $('#stitchDownload').addEventListener('click', async () => {
+    const files = await prepare();
+    if (files) h.downloadAll(files);
+  });
+
+  function clear() {
+    for (const it of st.items) it.thumb.width = 0;
+    st.items = [];
+    rematch();
+  }
+
+  render();
+  return { addFiles, clear, refresh: render, state: st };
+}

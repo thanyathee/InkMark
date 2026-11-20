@@ -3,6 +3,7 @@ import { TONE_SLIDERS, emptyTone, autoAdjust } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
 import { initTrimMode } from './trimmode.js';
+import { initStitchMode } from './stitchmode.js';
 import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas } from './render.js';
 import { GEO_SLIDERS, hasGeom, detectTilt } from './geometry.js';
 
@@ -11,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -102,10 +103,12 @@ async function addFiles(fileList) {
 }
 
 // ปุ่ม "+ เพิ่มรูป" ด้านบน / ลากวาง: ส่งให้โหมดที่เปิดอยู่
-const addToMode = (files) => (S.appMode === 'trim' ? trimMode.addFiles(files) : addFiles(files));
-for (const id of ['#fileInput', '#fileInput2', '#trimInput']) {
+const addToMode = (files) =>
+  S.appMode === 'trim' ? trimMode.addFiles(files) : S.appMode === 'stitch' ? stitchMode.addFiles(files) : addFiles(files);
+for (const id of ['#fileInput', '#fileInput2', '#trimInput', '#stitchInput']) {
   $(id).addEventListener('change', (e) => {
     if (id === '#trimInput') trimMode.addFiles(e.target.files);
+    else if (id === '#stitchInput') stitchMode.addFiles(e.target.files);
     else if (id === '#fileInput') addToMode(e.target.files);
     else addFiles(e.target.files);
     e.target.value = '';
@@ -115,6 +118,7 @@ for (const id of ['#fileInput', '#fileInput2', '#trimInput']) {
 $('#clearBtn').addEventListener('click', () => {
   if (!confirm('ล้างรูปทั้งหมด?')) return;
   if (S.appMode === 'trim') return trimMode.clear();
+  if (S.appMode === 'stitch') return stitchMode.clear();
   for (const it of state.items) it.thumb.width = 0;
   state.items = [];
   invalidateExport();
@@ -187,9 +191,9 @@ function rebuildGrid() {
   $('#empty').hidden = has;
   $('#gridHint').hidden = !has;
   $('#tabbar').hidden = !has;
-  if (S.appMode !== 'trim') $('#clearBtn').hidden = !has;
+  if (S.appMode === 'post') $('#clearBtn').hidden = !has;
   document.body.classList.toggle('has-items', has);
-  if (S.appMode !== 'trim') $('#count').textContent = has ? `${state.items.length} รูป` : '';
+  if (S.appMode === 'post') $('#count').textContent = has ? `${state.items.length} รูป` : '';
   updateExportSummary();
   scheduleRender();
 }
@@ -1279,19 +1283,35 @@ const trimMode = initTrimMode({
     $('#clearBtn').hidden = !n;
   },
 });
+const stitchMode = initStitchMode({
+  toast,
+  progress,
+  progressDone,
+  nextFrame,
+  downloadAll,
+  shareFiles,
+  isActive: () => S.appMode === 'stitch',
+  setTop(n) {
+    if (S.appMode !== 'stitch') return;
+    $('#count').textContent = n ? `${n} ภาพ` : '';
+    $('#clearBtn').hidden = !n;
+  },
+});
 function setAppMode(m) {
   S.appMode = m;
   saveSettings();
   document.body.classList.toggle('mode-trim', m === 'trim');
+  document.body.classList.toggle('mode-stitch', m === 'stitch');
   document.querySelectorAll('#modeSwitch button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
   closeSheet();
   if (m === 'trim') trimMode.refresh();
+  else if (m === 'stitch') stitchMode.refresh();
   else rebuildGrid();
 }
 document.querySelectorAll('#modeSwitch button').forEach((b) => b.addEventListener('click', () => setAppMode(b.dataset.mode)));
 
 rebuildGrid();
-setAppMode(S.appMode === 'trim' ? 'trim' : 'post');
+setAppMode(['trim', 'stitch'].includes(S.appMode) ? S.appMode : 'post');
 
 // สำหรับทดสอบอัตโนมัติ
-window.__inkmark = { state, addFiles, trimMode };
+window.__inkmark = { state, addFiles, trimMode, stitchMode };
