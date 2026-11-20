@@ -2,6 +2,7 @@ import { SIZE_MODES, SIZES, modeOf, isCropMode, canFrame, outputSize, cropFrac }
 import { TONE_SLIDERS, emptyTone, autoAdjust } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
+import { initTrimMode } from './trimmode.js';
 import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas } from './render.js';
 import { GEO_SLIDERS, hasGeom, detectTilt } from './geometry.js';
 
@@ -10,7 +11,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '2.7';
+const APP_VERSION = '3.0';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -18,7 +19,6 @@ const DEFAULTS = {
   mode: '4:5',
   size: 1080,
   autoImport: true,
-  autoTrim: true,
   prefix: 'ADS',
   global: emptyTone(),
   wm: { on: true, text: '#TISCOFOUNDATION', pos: 'br', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
@@ -88,7 +88,7 @@ async function addFiles(fileList) {
     progress('กำลังโหลดรูป', i, files.length);
     await nextFrame();
     try {
-      const it = await prepareItem(files[i], { trim: state.settings.autoTrim });
+      const it = await prepareItem(files[i]);
       if (state.settings.autoImport) applyAuto(it);
       state.items.push(it);
     } catch {
@@ -101,15 +101,20 @@ async function addFiles(fileList) {
   if (failed.length) toast(`เปิดไม่ได้ ${failed.length} รูป: ${failed.slice(0, 3).join(', ')}`, 4000);
 }
 
-for (const id of ['#fileInput', '#fileInput2']) {
+// ปุ่ม "+ เพิ่มรูป" ด้านบน / ลากวาง: ส่งให้โหมดที่เปิดอยู่
+const addToMode = (files) => (S.appMode === 'trim' ? trimMode.addFiles(files) : addFiles(files));
+for (const id of ['#fileInput', '#fileInput2', '#trimInput']) {
   $(id).addEventListener('change', (e) => {
-    addFiles(e.target.files);
+    if (id === '#trimInput') trimMode.addFiles(e.target.files);
+    else if (id === '#fileInput') addToMode(e.target.files);
+    else addFiles(e.target.files);
     e.target.value = '';
   });
 }
 
 $('#clearBtn').addEventListener('click', () => {
   if (!confirm('ล้างรูปทั้งหมด?')) return;
+  if (S.appMode === 'trim') return trimMode.clear();
   for (const it of state.items) it.thumb.width = 0;
   state.items = [];
   invalidateExport();
@@ -155,12 +160,6 @@ function rebuildGrid() {
     sizeB.className = 'own-size';
     sizeB.hidden = true;
     badges.append(badge, sizeB);
-    if (it.trim) {
-      const tb = document.createElement('span');
-      tb.className = 'trimmed';
-      tb.textContent = 'ตัดขอบดำแล้ว';
-      badges.append(tb);
-    }
     if (!it.date) {
       const nd = document.createElement('span');
       nd.className = 'nodate';
@@ -188,9 +187,9 @@ function rebuildGrid() {
   $('#empty').hidden = has;
   $('#gridHint').hidden = !has;
   $('#tabbar').hidden = !has;
-  $('#clearBtn').hidden = !has;
+  if (S.appMode !== 'trim') $('#clearBtn').hidden = !has;
   document.body.classList.toggle('has-items', has);
-  $('#count').textContent = has ? `${state.items.length} รูป` : '';
+  if (S.appMode !== 'trim') $('#count').textContent = has ? `${state.items.length} รูป` : '';
   updateExportSummary();
   scheduleRender();
 }
@@ -704,8 +703,6 @@ function updateEditor() {
   $('#edCropPane').hidden = !frame;
   refreshEdMode();
   refreshGeo();
-  $('#edTrimRow').hidden = !it.trimFound;
-  $('#edTrim').checked = !!it.trim;
   const zoomHow = touchUI ? 'สองนิ้วเพื่อซูม' : 'ลูกกลิ้งเพื่อซูม';
   $('#edCropLabel').textContent =
     mode === 'orig'
@@ -791,28 +788,6 @@ $('#edGeoReset').addEventListener('click', () => {
   markManual(cur());
   refreshGeo();
   queueEditorRender();
-});
-
-// ตัดขอบดำ: เปิด/ปิดรายรูป (สร้างรูปใหม่จากไฟล์ต้นฉบับ ค่าที่ปรับไว้ยังอยู่)
-async function setTrim(it, on) {
-  const n = await prepareItem(it.file, { trim: on });
-  it.thumb.width = 0;
-  Object.assign(it, { blob: n.blob, w: n.w, h: n.h, thumb: n.thumb, trim: n.trim, trimFound: n.trimFound, stats: n.stats });
-  Object.assign(it, { fx: 0.5, fy: 0.5, zoom: 1 });
-  if (it.auto) applyAuto(it); // วิเคราะห์แสงใหม่ (ขอบดำทำให้ค่าเพี้ยน)
-  invalidateExport();
-  rebuildGrid();
-  if (state.editIndex >= 0 && cur() === it) {
-    ed.workId = null;
-    updateEditor();
-    ensureWork(it);
-  }
-}
-$('#edTrim').addEventListener('change', (e) => setTrim(cur(), e.target.checked));
-$('#autoTrim').checked = S.autoTrim;
-$('#autoTrim').addEventListener('change', (e) => {
-  S.autoTrim = e.target.checked;
-  saveSettings();
 });
 
 // ขนาดเฉพาะรูปนี้ ("" = ตามชุด)
@@ -1096,7 +1071,7 @@ window.addEventListener('drop', (e) => {
   e.preventDefault();
   dragDepth = 0;
   $('#dropZone').hidden = true;
-  addFiles(e.dataTransfer.files);
+  addToMode(e.dataTransfer.files);
 });
 
 window.addEventListener('resize', () => {
@@ -1218,11 +1193,11 @@ $('#deskFilesBtn').addEventListener('click', async () => {
 function zipName() {
   return `${['00', cleanPrefix(), state.items[0]?.date || todayStr()].filter(Boolean).join('_')}.zip`;
 }
-async function downloadZip(files) {
+async function downloadZip(files, name = zipName()) {
   const zip = await makeZip(files);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(zip);
-  a.download = zipName();
+  a.download = name;
   document.body.append(a);
   a.click();
   a.remove();
@@ -1230,9 +1205,8 @@ async function downloadZip(files) {
 }
 
 // ขั้นที่ 2: แชร์ (ต้องกดจากผู้ใช้โดยตรง Safari จึงยอมเปิดหน้าต่างแชร์)
-$('#shareBtn').addEventListener('click', async () => {
-  const files = state.exported;
-  if (!files) return;
+$('#shareBtn').addEventListener('click', () => state.exported && shareFiles(state.exported));
+async function shareFiles(files) {
   if (navigator.canShare && navigator.canShare({ files })) {
     try {
       await navigator.share({ files });
@@ -1242,7 +1216,7 @@ $('#shareBtn').addEventListener('click', async () => {
   } else {
     downloadAll(files);
   }
-});
+}
 $('#downloadBtn').addEventListener('click', () => state.exported && downloadAll(state.exported));
 
 async function downloadAll(files) {
@@ -1290,7 +1264,34 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 }
 $('#version').textContent = `เวอร์ชัน ${APP_VERSION}`;
 
+// ---------- โหมด: แต่งรูปโพสต์ / ตัดขอบ ----------
+const trimMode = initTrimMode({
+  toast,
+  progress,
+  progressDone,
+  nextFrame,
+  downloadAll,
+  downloadZip,
+  shareFiles,
+  setTop(n) {
+    if (S.appMode !== 'trim') return;
+    $('#count').textContent = n ? `${n} รูป` : '';
+    $('#clearBtn').hidden = !n;
+  },
+});
+function setAppMode(m) {
+  S.appMode = m;
+  saveSettings();
+  document.body.classList.toggle('mode-trim', m === 'trim');
+  document.querySelectorAll('#modeSwitch button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+  closeSheet();
+  if (m === 'trim') trimMode.refresh();
+  else rebuildGrid();
+}
+document.querySelectorAll('#modeSwitch button').forEach((b) => b.addEventListener('click', () => setAppMode(b.dataset.mode)));
+
 rebuildGrid();
+setAppMode(S.appMode === 'trim' ? 'trim' : 'post');
 
 // สำหรับทดสอบอัตโนมัติ
-window.__inkmark = { state, addFiles };
+window.__inkmark = { state, addFiles, trimMode };

@@ -4,7 +4,6 @@ import { analyzeAuto, buildParams, applyTone, emptyTone } from './tone.js';
 import { readShotDate } from './exif.js';
 import { drawWatermark } from './watermark.js';
 import { hasGeom, geoParams } from './geometry.js';
-import { detectBorders } from './trim.js';
 
 // Safari บน iPhone จำกัดขนาด canvas (~16 ล้านพิกเซล) จึงเก็บต้นฉบับไว้ไม่เกินนี้
 const SOURCE_MAX = 3072;
@@ -26,7 +25,7 @@ const P3 = (() => {
 export const P3_SUPPORTED = P3;
 const ctx2d = (c, p3, extra = {}) => c.getContext('2d', p3 && P3 ? { ...extra, colorSpace: 'display-p3' } : extra);
 
-function loadImage(src) {
+export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -149,8 +148,8 @@ export async function prepareItem(file, opts = {}) {
     const img = await loadImage(url);
     const w0 = img.naturalWidth;
     const h0 = img.naturalHeight;
-    const found = detectBorders(img, w0, h0);
-    const trim = opts.trim && found ? found : null;
+    // โหมดแต่งรูปโพสต์ไม่ตัดขอบ (opts.trim = กรอบที่จะตัด ใช้เฉพาะโหมดตัดขอบ)
+    const trim = opts.trim || null;
     const full = scaledCanvas(img, w0, h0, SOURCE_MAX, trim ? trimRegion(trim, w0, h0) : undefined);
     const blob = await toBlob(full, 'image/jpeg', 0.95);
     const thumb = scaledCanvas(full, full.width, full.height, THUMB_MAX);
@@ -162,8 +161,7 @@ export async function prepareItem(file, opts = {}) {
       w: full.width,
       h: full.height,
       thumb,
-      trim, // กรอบที่ตัดขอบดำแล้ว (สัดส่วนของต้นฉบับ) หรือ null
-      trimFound: found, // พบขอบดำไหม (ไว้เปิด/ปิดได้ภายหลัง)
+      trim, // กรอบที่ตัดขอบแล้ว (สัดส่วนของต้นฉบับ) หรือ null
       stats: analyzeAuto(thumb),
       date: await readShotDate(file), // 'YYYYMMDD' หรือ null
       fx: 0.5,

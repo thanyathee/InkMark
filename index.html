@@ -16,10 +16,16 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">InkMark <span id="count" class="count"></span></div>
-    <div class="top-actions">
-      <button id="clearBtn" class="ghost" hidden>ล้างทั้งหมด</button>
-      <label class="btn primary">+ เพิ่มรูป<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+    <div class="topbar-main">
+      <div class="brand">InkMark <span id="count" class="count"></span></div>
+      <div class="top-actions">
+        <button id="clearBtn" class="ghost" hidden>ล้างทั้งหมด</button>
+        <label class="btn primary">+ เพิ่มรูป<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+      </div>
+    </div>
+    <div class="seg mode-switch" id="modeSwitch">
+      <button type="button" data-mode="post"># แต่งรูปโพสต์</button>
+      <button type="button" data-mode="trim">✂︎ ตัดขอบ</button>
     </div>
   </header>
 
@@ -37,6 +43,51 @@
     <div id="grid" class="grid"></div>
   </main>
 
+  <!-- โหมดตัดขอบ -->
+  <section id="trimApp" class="trim-app">
+    <div class="trim-opts">
+      <span class="muted">ตัด</span>
+      <div class="seg" id="trimColorSeg"></div>
+    </div>
+    <section id="trimEmpty" class="empty">
+      <div class="empty-mark">✂︎</div>
+      <h1>ตัดขอบภาพแคปหน้าจอ</h1>
+      <p>ตัดขอบดำ/ขาวออกอัตโนมัติ · ไม่ใส่ลายน้ำ ไม่ปรับสี คุณภาพเท่าต้นฉบับ</p>
+      <label class="btn primary big">เลือกรูป<input id="trimInput" type="file" accept="image/*" multiple hidden></label>
+      <p class="hint">บันทึกเป็นชื่อเดิมต่อท้าย _crop เช่น IMG_5969_crop.png</p>
+    </section>
+    <p id="trimHint" class="grid-hint" hidden>แตะที่รูปเพื่อดู หรือลากขอบปรับเอง</p>
+    <div id="trimGrid" class="grid"></div>
+  </section>
+  <div id="trimBar" class="trim-bar" hidden>
+    <span id="trimSummary" class="trim-summary"></span>
+    <div class="trim-actions">
+      <button id="trimPrepare" class="btn primary touch-only">บันทึกทั้งหมด</button>
+      <button id="trimShare" class="btn primary touch-only" hidden>บันทึกลงคลังรูป / แชร์</button>
+      <button id="trimZip" class="btn primary desk-only">ดาวน์โหลด .zip</button>
+      <button id="trimFiles" class="btn outline desk-only">ทีละรูป</button>
+    </div>
+  </div>
+  <div id="trimEditor" class="editor" hidden>
+    <div class="ed-head">
+      <button id="tEdClose" class="ghost">✕ ปิด</button>
+      <span id="tEdTitle" class="ed-title"></span>
+      <span class="ed-nav">
+        <button id="tEdPrev" class="ghost" aria-label="รูปก่อนหน้า">‹</button>
+        <button id="tEdNext" class="ghost" aria-label="รูปถัดไป">›</button>
+      </span>
+    </div>
+    <div class="t-stage"><canvas id="tEdCanvas"></canvas></div>
+    <div class="t-controls">
+      <p class="hint" id="tEdInfo"></p>
+      <div class="auto-row">
+        <button id="tEdAuto" class="btn primary">✂︎ ตัดอัตโนมัติ</button>
+        <button id="tEdNone" class="btn outline">ไม่ตัด</button>
+      </div>
+      <p class="hint">ลากเส้นขอบสีชมพูเพื่อปรับเอง · ลากกลางกรอบเพื่อเลื่อน</p>
+    </div>
+  </div>
+
   <!-- แผงตั้งค่า -->
   <section id="sheet" class="sheet" hidden>
     <div class="sheet-head">
@@ -51,10 +102,6 @@
       <p class="label" id="sizeLabel">ความกว้าง (px)</p>
       <div class="seg" id="sizeSeg"></div>
       <p class="hint" id="sizeHint"></p>
-      <label class="switch-row">
-        <span><strong>ตัดขอบดำอัตโนมัติ</strong><br><small>สำหรับภาพแคปหน้าจอที่ติดพื้นหลังดำ · ทำตอนเพิ่มรูป</small></span>
-        <input type="checkbox" id="autoTrim" class="switch">
-      </label>
     </div>
 
     <div class="pane" data-pane="tone">
@@ -153,10 +200,6 @@
             <select id="edMode"><option value=""></option></select>
           </div>
           <p class="hint" id="edModeNote" hidden>รูปนี้ใช้ขนาดเฉพาะ รูปอื่นยังใช้ขนาดตามชุด</p>
-          <label class="switch-row" id="edTrimRow" hidden>
-            <span><strong>ตัดขอบดำ</strong> <small>(ภาพแคปหน้าจอ)</small></span>
-            <input type="checkbox" id="edTrim" class="switch">
-          </label>
           <p class="hint mobile-only" id="edFrameHint">ลากกรอบสีขาวเพื่อเลือกตำแหน่ง · ใช้สองนิ้วซูมได้</p>
           <div class="row" id="edZoomRow">
             <span class="muted">ซูม</span>
