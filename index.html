@@ -94,16 +94,27 @@
     <section id="stitchEmpty" class="empty">
       <div class="empty-mark">⧉</div>
       <h1>ต่อภาพแคปหน้าจอยาว</h1>
-      <p>เลือกภาพแคปหลายภาพ แอปหาส่วนที่ซ้อนกันแล้วต่อเป็นภาพยาวภาพเดียว</p>
+      <p>เลือกภาพแคปหลายภาพ (ลำดับไหนก็ได้) แอปเรียงลำดับ หาส่วนที่ซ้อนกัน แล้วต่อเป็นภาพยาวภาพเดียว</p>
       <label class="btn primary big">เลือกภาพแคป<input id="stitchInput" type="file" accept="image/*" multiple hidden></label>
-      <p class="hint">เลือกเรียงจากบนลงล่าง (สลับลำดับทีหลังได้) · บันทึกเป็น PNG ชื่อ ภาพแรก_stitch.png</p>
+      <p class="hint">บันทึกเป็น PNG ชื่อ ภาพแรก_stitch.png</p>
     </section>
     <div id="stitchWork" hidden>
-      <p class="grid-hint">ลำดับภาพ (บน → ล่าง) · ใช้ ◀ ▶ สลับ</p>
+      <div class="stitch-top">
+        <p class="grid-hint">ลำดับภาพ (บน → ล่าง) · จัดให้อัตโนมัติ · ใช้ ◀ ▶ สลับเองได้</p>
+        <button id="stitchAuto" type="button" class="ghost small">↻ เรียงอัตโนมัติ</button>
+      </div>
       <div id="stitchStrip" class="stitch-strip"></div>
       <div class="stitch-layout">
         <div id="stitchPreviewBox" class="stitch-preview"><canvas id="stitchCanvas"></canvas></div>
-        <div id="stitchSeams" class="stitch-seams"></div>
+        <div class="stitch-side">
+          <div class="seam bars-box">
+            <strong>แถบบน / แถบล่าง</strong>
+            <p class="hint" id="stitchBars"></p>
+            <label class="switch-row"><span>เก็บแถบบน <small class="muted">(เวลา แบต ชื่อแชท) จากภาพแรก</small></span><input type="checkbox" id="stitchKeepHeader" class="switch"></label>
+            <label class="switch-row"><span>เก็บแถบล่าง <small class="muted">(ช่องพิมพ์ เมนู) จากภาพสุดท้าย</small></span><input type="checkbox" id="stitchKeepFooter" class="switch"></label>
+          </div>
+          <div id="stitchSeams" class="stitch-seams"></div>
+        </div>
       </div>
     </div>
   </section>

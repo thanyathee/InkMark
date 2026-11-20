@@ -2,14 +2,14 @@
 // เรียงจากบนลงล่างตามลำดับที่เลือก (สลับลำดับได้) · หาส่วนซ้อนอัตโนมัติ · ปรับรอยต่อเองได้
 // บันทึกเป็น PNG ความละเอียดเต็ม ชื่อ = ชื่อภาพแรก_stitch.png
 import { loadImage, toBlob } from './render.js';
-import { makeSig, matchPair } from './stitch.js';
+import { makeSig, matchPair, detectBars, isDuplicate, bestOrder } from './stitch.js';
 
 const $ = (s) => document.querySelector(s);
 const THUMB_W = 720;
 const MAX_PX = 16e6; // เพดานพิกเซลของ canvas บน iPhone
 
 export function initStitchMode(h) {
-  const st = { items: [], seams: [], exported: null };
+  const st = { items: [], seams: [], exported: null, bars: null, cache: new Map(), keepHeader: true, keepFooter: true };
   let nextId = 1;
   const invalidate = () => {
     st.exported = null;
@@ -44,19 +44,71 @@ export function initStitchMode(h) {
       }
     }
     h.progressDone();
-    rematch();
-    const bad = st.seams.filter((s) => !s.found).length;
-    if (st.items.length > 1)
-      h.toast(bad ? `⚠️ ต่อได้ แต่หาส่วนซ้อนไม่เจอ ${bad} รอยต่อ — ตรวจด้านขวา/ด้านล่าง` : `⧉ ต่อภาพสำเร็จ ${st.items.length} ภาพ`, 3500);
+    await autoArrange();
   }
 
-  // คำนวณรอยต่อใหม่ทุกคู่ (เมื่อเพิ่ม/ลบ/สลับลำดับ)
-  function rematch() {
-    st.seams = [];
-    for (let i = 0; i < st.items.length - 1; i++) {
-      const m = matchPair(st.items[i].sig, st.items[i + 1].sig);
-      st.seams.push({ ...m, adj: 0 });
+  // แถบบน/ล่าง: เทียบจากทุกภาพพร้อมกัน (เปลี่ยนเมื่อเพิ่ม/ลบภาพ)
+  function updateBars() {
+    const b = detectBars(st.items.map((it) => it.sig));
+    const key = JSON.stringify(b);
+    if (key !== st.barsKey) st.cache.clear();
+    st.bars = b;
+    st.barsKey = key;
+  }
+  function pairMatch(a, b) {
+    const k = `${a.id}>${b.id}`;
+    if (!st.cache.has(k)) st.cache.set(k, matchPair(a.sig, b.sig, st.bars));
+    return st.cache.get(k);
+  }
+
+  // เรียงอัตโนมัติ: ตัดภาพซ้ำ → จับคู่ทุกภาพ → หาลำดับที่ต่อได้ดีที่สุด
+  async function autoArrange() {
+    const n0 = st.items.length;
+    if (n0 < 2) return rematch();
+    updateBars();
+    const keep = [];
+    for (const it of st.items) {
+      if (keep.some((k) => isDuplicate(k.sig, it.sig, st.bars))) it.thumb.width = 0;
+      else keep.push(it);
     }
+    const dups = n0 - keep.length;
+    st.items = keep;
+    updateBars();
+    const n = st.items.length;
+    const match = Array.from({ length: n }, () => new Array(n).fill(null));
+    const total = n * (n - 1);
+    let done = 0;
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        if (done % 4 === 0) {
+          h.progress('กำลังหาลำดับภาพ', done, total);
+          await h.nextFrame();
+        }
+        match[i][j] = pairMatch(st.items[i], st.items[j]);
+        done++;
+      }
+    h.progressDone();
+    const names = st.items.map((it) => it.name);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const rank = names.map((nm) => sorted.indexOf(nm));
+    const before = st.items.map((it) => it.id).join();
+    st.items = bestOrder(n, match, rank).map((i) => st.items[i]);
+    const moved = before !== st.items.map((it) => it.id).join();
+    rematch();
+    const bad = st.seams.filter((x) => !x.found).length;
+    const msg = [];
+    if (dups) msg.push(`ตัดภาพซ้ำ ${dups} ภาพ`);
+    if (moved) msg.push('จัดลำดับให้ใหม่');
+    msg.push(bad ? `⚠️ หาส่วนซ้อนไม่เจอ ${bad} รอยต่อ` : `⧉ ต่อสำเร็จ ${n} ภาพ`);
+    h.toast(msg.join(' · '), 4000);
+  }
+
+  // คำนวณรอยต่อของภาพที่อยู่ติดกัน (เมื่อเพิ่ม/ลบ/สลับลำดับ)
+  function rematch() {
+    if (st.items.length > 1) updateBars();
+    st.seams = [];
+    for (let i = 0; i < st.items.length - 1; i++) st.seams.push({ ...pairMatch(st.items[i], st.items[i + 1]), adj: 0 });
     invalidate();
     render();
   }
@@ -65,8 +117,10 @@ export function initStitchMode(h) {
   function pieces() {
     const n = st.items.length;
     return st.items.map((it, i) => {
-      let y0 = i === 0 ? 0 : st.seams[i - 1].startB + st.seams[i - 1].adj;
-      let y1 = i === n - 1 ? it.h : st.seams[i].cutA;
+      const top = st.keepHeader || !st.bars ? 0 : st.bars.fHeader;
+      const bot = st.keepFooter || !st.bars ? it.h : it.h - st.bars.fFooter;
+      let y0 = i === 0 ? top : st.seams[i - 1].startB + st.seams[i - 1].adj;
+      let y1 = i === n - 1 ? bot : st.seams[i].cutA;
       y0 = Math.max(0, Math.min(it.h - 1, y0));
       y1 = Math.max(y0 + 1, Math.min(it.h, y1));
       return { it, y0, y1 };
@@ -93,6 +147,11 @@ export function initStitchMode(h) {
     const scaled = W * H > MAX_PX;
     $('#stitchSummary').innerHTML =
       `<strong>${n} ภาพ</strong> → ${W}×${H} px` + (scaled ? '<br><small class="muted">ยาวมาก จะย่อลงให้พอดีกับ iPhone</small>' : '');
+    const b = st.bars;
+    $('#stitchBars').textContent =
+      n > 1 && b
+        ? `ตรวจพบแถบบน ${b.fHeader} px · แถบล่าง ${b.fFooter} px (เหมือนกันทุกภาพ)`
+        : 'เพิ่มภาพอย่างน้อย 2 ภาพ';
   }
 
   function renderStrip() {
@@ -228,6 +287,20 @@ export function initStitchMode(h) {
     hint.textContent = 'เลื่อน + = ตัดส่วนซ้ำของภาพล่างออกมากขึ้น · − = เก็บไว้มากขึ้น · แตะสองครั้งที่แถบเพื่อกลับเป็น 0';
     box.append(hint);
   }
+
+  $('#stitchAuto').addEventListener('click', () => autoArrange());
+  $('#stitchKeepHeader').checked = st.keepHeader;
+  $('#stitchKeepFooter').checked = st.keepFooter;
+  $('#stitchKeepHeader').addEventListener('change', (e) => {
+    st.keepHeader = e.target.checked;
+    invalidate();
+    render();
+  });
+  $('#stitchKeepFooter').addEventListener('change', (e) => {
+    st.keepFooter = e.target.checked;
+    invalidate();
+    render();
+  });
 
   window.addEventListener('resize', () => h.isActive() && st.items.length && renderPreview());
 

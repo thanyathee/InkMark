@@ -459,3 +459,8 @@ body:not(.mode-stitch) #stitchBar { display: none !important; }
   .stitch-preview { flex: none; width: 460px; max-height: calc(100vh - 290px); }
   .stitch-seams { flex: 1; max-width: 520px; }
 }
+.stitch-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stitch-top .grid-hint { margin: 0; }
+.bars-box { border-left-color: var(--primary); }
+.bars-box .switch-row { padding: 4px 0; font-size: 14px; }
+@media (min-width: 1024px) { .stitch-side { flex: 1; max-width: 520px; } }
