@@ -470,3 +470,5 @@ body:not(.mode-stitch) #stitchBar { display: none !important; }
 .ref-row .muted { flex: none; font-size: 13px; }
 .ref-row .seg { flex: 1; }
 .ref-row .seg button { padding: 6px 8px; font-size: 13px; }
+.seg.mode-grid button[data-value="free"] { grid-column: 1 / -1; }
+#edFreeInfo { color: var(--primary); font-weight: 600; }

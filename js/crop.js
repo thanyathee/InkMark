@@ -10,6 +10,7 @@ export const SIZE_MODES = [
   { id: 'w', label: 'กว้างเท่ากัน' },
   { id: 'h', label: 'สูงเท่ากัน' },
   { id: 'orig', label: 'ต้นฉบับ' },
+  { id: 'free', label: 'อิสระ (ลากกรอบเอง)' },
 ];
 
 export const SIZES = [1080, 1440, 2048];
@@ -24,14 +25,18 @@ export function isCropMode(id) {
 
 // เลือกตำแหน่ง/ซูมรายรูปได้ไหม (โหมดต้นฉบับซูมได้ โดยคงสัดส่วนเดิม)
 export function canFrame(id) {
-  return isCropMode(id) || id === 'orig';
+  return isCropMode(id) || id === 'orig' || id === 'free';
 }
+
+// โหมดอิสระ: กรอบที่ผู้ใช้ลากเอง (สัดส่วน 0..1) — ค่าเริ่มต้น = ทั้งรูป
+export const freeRect = (item) => item.free || { x: 0, y: 0, w: 1, h: 1 };
 
 // ขนาดไฟล์ผลลัพธ์ (px)
 export function outputSize(id, size, sw, sh) {
   const m = modeOf(id);
   if (m.ratio) return { w: size, h: Math.round(size / m.ratio) };
   if (m.id === 'orig') return { w: sw, h: sh };
+  if (m.id === 'free') return { w: size, h: Math.round((size * sh) / sw) }; // ค่าจริงขึ้นกับกรอบที่ลาก
   if (m.id === 'w') return { w: size, h: Math.round((size * sh) / sw) };
   return { w: Math.round((size * sw) / sh), h: size };
 }
@@ -39,6 +44,7 @@ export function outputSize(id, size, sw, sh) {
 // กรอบตัดภาพเป็นสัดส่วน 0..1 ของภาพต้นฉบับ
 // item.fx / item.fy = ตำแหน่งกรอบ (0 = ชิดซ้าย/บน, 1 = ชิดขวา/ล่าง), item.zoom >= 1
 export function cropFrac(id, sw, sh, item) {
+  if (id === 'free') return { ...freeRect(item) };
   const m = modeOf(id);
   const S = sw / sh;
   const ratio = m.ratio || (m.id === 'orig' ? S : 0);

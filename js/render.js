@@ -234,6 +234,10 @@ export function renderImage(src, item, settings, opts = {}) {
     // ต้นฉบับ + ซูม: ได้เฉพาะส่วนที่เลือก ขนาดตามพิกเซลจริง (ไม่ขยาย จึงคมเต็มที่)
     W = Math.max(1, Math.round(f.w * sw));
     H = Math.max(1, Math.round(f.h * sh));
+  } else if (settings.mode === 'free') {
+    // อิสระ: กว้างตามที่เลือก (1080/1440/2048) สูงตามสัดส่วนกรอบที่ลาก
+    W = settings.size;
+    H = Math.max(1, Math.round((settings.size * f.h * sh) / (f.w * sw)));
   }
   if (W * H > CANVAS_MAX_PX) {
     const s = Math.sqrt(CANVAS_MAX_PX / (W * H));

@@ -1,4 +1,4 @@
-import { SIZE_MODES, SIZES, modeOf, isCropMode, canFrame, outputSize, cropFrac } from './crop.js';
+import { SIZE_MODES, SIZES, modeOf, isCropMode, canFrame, outputSize, cropFrac, freeRect } from './crop.js';
 import { TONE_SLIDERS, emptyTone, autoAdjust } from './tone.js';
 import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
@@ -12,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -449,9 +449,12 @@ function updateSizeLabels() {
   $('#sizeLabel').textContent = S.mode === 'h' ? 'ความสูง (px)' : 'ความกว้าง (px)';
   const crop = isCropMode(S.mode);
   const orig = S.mode === 'orig';
+  const free = S.mode === 'free';
   $('#sizeLabel').hidden = orig;
   $('#sizeSeg').hidden = orig;
-  if (orig) {
+  if (free) {
+    $('#sizeHint').textContent = `กว้าง ${S.size} px · สูงตามกรอบที่ลาก · แตะที่รูปแล้วลากมุมหรือขอบกรอบได้ตามใจ`;
+  } else if (orig) {
     $('#sizeHint').textContent = 'ไม่ตัด ไม่ย่อ · ทุกรูปคงขนาดเดิม · อยากได้เฉพาะบางส่วน แตะที่รูปแล้วซูม (สัดส่วนเท่าเดิม ไม่ขยายภาพ)';
   } else if (crop) {
     const o = outputSize(S.mode, S.size, 1, 1);
@@ -459,7 +462,9 @@ function updateSizeLabels() {
   } else {
     $('#sizeHint').textContent = `ไม่ตัดรูป · ย่อให้${S.mode === 'w' ? 'ความกว้าง' : 'ความสูง'}เท่ากันที่ ${S.size} px อีกด้านตามสัดส่วนเดิม`;
   }
-  $('#gridHint').textContent = orig
+  $('#gridHint').textContent = free
+    ? 'แตะที่รูปแล้วลากมุมหรือขอบกรอบเพื่อกำหนดขนาดเอง'
+    : orig
     ? 'แตะที่รูปเพื่อซูมเลือกเฉพาะส่วน หรือปรับแสงสีเฉพาะรูป'
     : crop
     ? 'แตะที่รูปเพื่อเลื่อนตำแหน่งกรอบ หรือปรับแสงสีเฉพาะรูป'
@@ -703,8 +708,9 @@ function updateEditor() {
   $('#edNext').disabled = state.editIndex === state.items.length - 1;
   const mode = modeFor(it);
   const frame = canFrame(mode);
-  $('#edZoomRow').hidden = !frame;
-  $('#edFrameHint').hidden = !frame;
+  $('#edZoomRow').hidden = !frame || mode === 'free';
+  $('#edFreeInfo').hidden = mode !== 'free';
+  $('#edFrameHint').hidden = !frame || mode === 'free';
   $('#edCropPane').hidden = !frame;
   refreshEdMode();
   refreshGeo();
@@ -913,8 +919,15 @@ $('#edMode').append(
 );
 $('#edMode').addEventListener('change', (e) => {
   const it = cur();
+  const prev = modeFor(it);
+  const next = e.target.value || S.mode;
+  // เปลี่ยนเป็นอิสระ: เริ่มจากกรอบที่เห็นอยู่ตอนนี้ จะได้ปรับต่อนิดเดียว
+  if (next === 'free' && prev !== 'free') {
+    const src = ed.work || it.thumb;
+    it.free = cropFrac(prev, src.width, src.height, it);
+  }
   it.mode = e.target.value && e.target.value !== S.mode ? e.target.value : null;
-  Object.assign(it, { fx: 0.5, fy: 0.5, zoom: 1 });
+  if (next !== 'free') Object.assign(it, { fx: 0.5, fy: 0.5, zoom: 1 });
   invalidateExport();
   updateExportSummary();
   updateEditor();
@@ -976,6 +989,34 @@ function drawCrop() {
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 2;
   ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+  ed.cropGeo = { cw, ch };
+  if (modeFor(it) === 'free') {
+    // ที่จับ: มุม 4 จุด + กลางขอบ 4 ด้าน
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    const sq = (x, y) => {
+      ctx.fillRect(x - 7, y - 7, 14, 14);
+      ctx.strokeRect(x - 7, y - 7, 14, 14);
+    };
+    const bar = (x, y, horiz) => {
+      const w = horiz ? 30 : 6;
+      const h = horiz ? 6 : 30;
+      ctx.fillRect(x - w / 2, y - h / 2, w, h);
+      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+    };
+    sq(r.x, r.y);
+    sq(r.x + r.w, r.y);
+    sq(r.x, r.y + r.h);
+    sq(r.x + r.w, r.y + r.h);
+    bar(r.x + r.w / 2, r.y, true);
+    bar(r.x + r.w / 2, r.y + r.h, true);
+    bar(r.x, r.y + r.h / 2, false);
+    bar(r.x + r.w, r.y + r.h / 2, false);
+    const W = S.size;
+    const H = Math.max(1, Math.round((W * f.h * it.h) / (f.w * it.w))); // ใช้สัดส่วนเดียวกับตอนบันทึก
+    $('#edFreeInfo').textContent = `ขนาดที่ได้ ${W} × ${H} px · ลากมุมหรือขอบกรอบ · ลากกลางกรอบเพื่อเลื่อน`;
+  }
   // เส้นที่ใช้อ้างอิงตอนตั้งตรงอัตโนมัติ (แปลงจากรูปเดิมไปยังรูปที่หมุนแล้ว)
   if (ed.ref && ed.ref.id === it.id) {
     const P = geoParams(it.geo || {}, cw, ch);
@@ -1078,6 +1119,33 @@ ed.crop.addEventListener('pointerdown', (e) => {
     return;
   }
   if (!canFrame(modeFor(cur()))) return;
+  if (modeFor(cur()) === 'free' && ed.cropGeo) {
+    // หาว่าจับมุม/ขอบไหน (ระยะ 24px) หรือจับกลางกรอบ
+    const b = ed.crop.getBoundingClientRect();
+    const px = e.clientX - b.left;
+    const py = e.clientY - b.top;
+    const f = { ...freeRect(cur()) };
+    const { cw, ch } = ed.cropGeo;
+    const L = f.x * cw;
+    const T = f.y * ch;
+    const Rr = (f.x + f.w) * cw;
+    const B = (f.y + f.h) * ch;
+    const tol = 24;
+    const inY = py > T - tol && py < B + tol;
+    const inX = px > L - tol && px < Rr + tol;
+    const edges = {
+      l: inY && Math.abs(px - L) < tol,
+      r: inY && Math.abs(px - Rr) < tol,
+      t: inX && Math.abs(py - T) < tol,
+      b: inX && Math.abs(py - B) < tol,
+    };
+    const any = edges.l || edges.r || edges.t || edges.b;
+    if (!any && !(px > L && px < Rr && py > T && py < B)) return;
+    ed.crop.setPointerCapture(e.pointerId);
+    ed.freeDrag = { x: px, y: py, f, edges, move: !any };
+    ed.interacting = true;
+    return;
+  }
   ed.crop.setPointerCapture(e.pointerId);
   ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   beginGesture();
@@ -1086,6 +1154,32 @@ ed.crop.addEventListener('pointermove', (e) => {
   if (ed.guide && ed.guideStart) {
     const b = ed.crop.getBoundingClientRect();
     ed.guideLine = [...ed.guideStart, e.clientX - b.left, e.clientY - b.top];
+    queueEditorRender();
+    return;
+  }
+  if (ed.freeDrag) {
+    const it = cur();
+    const b = ed.crop.getBoundingClientRect();
+    const d = ed.freeDrag;
+    const dx = (e.clientX - b.left - d.x) / ed.cropGeo.cw;
+    const dy = (e.clientY - b.top - d.y) / ed.cropGeo.ch;
+    const MIN = 0.05;
+    let { x, y, w, h } = d.f;
+    if (d.move) {
+      x = clampN(x + dx, 0, 1 - w);
+      y = clampN(y + dy, 0, 1 - h);
+    } else {
+      let x1 = x + w;
+      let y1 = y + h;
+      if (d.edges.l) x = clampN(x + dx, 0, x1 - MIN);
+      if (d.edges.r) x1 = clampN(x1 + dx, x + MIN, 1);
+      if (d.edges.t) y = clampN(y + dy, 0, y1 - MIN);
+      if (d.edges.b) y1 = clampN(y1 + dy, y + MIN, 1);
+      w = x1 - x;
+      h = y1 - y;
+    }
+    it.free = { x, y, w, h };
+    markManual(it);
     queueEditorRender();
     return;
   }
@@ -1107,6 +1201,12 @@ ed.crop.addEventListener('pointermove', (e) => {
   queueEditorRender();
 });
 function endGesture(e) {
+  if (ed.freeDrag) {
+    ed.freeDrag = null;
+    ed.interacting = false;
+    queueEditorRender();
+    return;
+  }
   if (ed.guide && ed.guideStart) {
     const l = ed.guideLine;
     ed.guideStart = null;
@@ -1262,7 +1362,9 @@ function updateExportSummary() {
   const first = state.items[0];
   const o = outputSize(S.mode, S.size, first.w, first.h);
   const dims =
-    S.mode === 'orig'
+    S.mode === 'free'
+      ? `กว้าง ${S.size} px · สูงตามกรอบที่ลาก`
+      : S.mode === 'orig'
       ? 'ขนาดเดิมของแต่ละรูป (รูปที่ซูมจะได้เฉพาะส่วนที่เลือก)'
       : isCropMode(S.mode)
         ? `${o.w}×${o.h} px`
