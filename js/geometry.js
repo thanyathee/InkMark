@@ -263,8 +263,10 @@ export function detectLines(canvas) {
     // ตำแหน่งแนวนอนของเส้นตั้ง ที่กลางภาพ (เส้นใกล้กลางเพี้ยนจากมุมกล้องน้อย)
     const th = (a * Math.PI) / 180;
     const rho = l.r - R;
+    // ตำแหน่งของเส้นที่กลางภาพ: เส้นตั้ง = ตำแหน่ง x (ซ้าย/ขวา), เส้นนอน = ตำแหน่ง y (บน/ล่าง) · ช่วง -0.5..0.5
     let u = 0;
     if (vert && Math.abs(Math.cos(th)) > 1e-3) u = (rho - (H / 2) * Math.sin(th)) / Math.cos(th) / W - 0.5;
+    if (!vert && Math.abs(Math.sin(th)) > 1e-3) u = (rho - (W / 2) * Math.cos(th)) / Math.sin(th) / H - 0.5;
     return { ...l, a, vert, dev, u, w: l.v, rho, th };
   });
   const wmed = (arr) => {
@@ -277,56 +279,64 @@ export function detectLines(canvas) {
     }
     return 0;
   };
-  const fam = (vert) => {
-    const L = info.filter((l) => l.vert === vert);
-    if (!L.length) return null;
-    const med = wmed(L);
-    const used = L.filter((l) => Math.abs(l.dev - med) <= 1.2);
-    const w = used.reduce((p, q) => p + q.w, 0);
-    const mean = used.reduce((p, q) => p + q.dev * q.w, 0) / (w || 1);
-    const mad = L.reduce((p, q) => p + Math.abs(q.dev - med) * q.w, 0) / L.reduce((p, q) => p + q.w, 0);
-    return { dev: mean, used, w, mad, n: used.length };
-  };
-  // เส้นแนวตั้ง: ถ่ายเงย/ก้ม เสาซ้ายขวาจะล้มเข้าหากันคนละทาง (เอียงเป็นสัดส่วนกับระยะจากกลางภาพ)
+  // มุมกล้องทำให้เส้นขนานล้มเข้าหากัน: เสาซ้าย/ขวาเอียงคนละทาง (ถ่ายเงย/ก้ม)
+  // และเส้นนอนบน/ล่างเอียงคนละทาง (ยืนถ่ายเฉียง) — เอียงเป็นสัดส่วนกับระยะจากกลางภาพ
   // → ฟิตเส้นตรง dev = เอียงจริง + k × ตำแหน่ง แล้วใช้ค่าที่กลางภาพ (ตัดเส้นที่ไม่เข้าพวกออกทีละรอบ)
-  const famV = () => {
-    let L = info.filter((l) => l.vert);
+  const famFit = (vert) => {
+    const L = info.filter((l) => l.vert === vert);
     if (!L.length) return null;
     let a0 = wmed(L);
     let b0 = 0;
+    const fit = (arr) => {
+      let sw = 0, su = 0, sd = 0, suu = 0, sud = 0;
+      for (const l of arr) {
+        sw += l.w; su += l.w * l.u; sd += l.w * l.dev; suu += l.w * l.u * l.u; sud += l.w * l.u * l.dev;
+      }
+      const den = sw * suu - su * su;
+      // ต้องมีเส้นกระจายพอถึงจะประเมินการล้มได้ ไม่งั้นใช้ค่าเฉลี่ย
+      if (arr.length < 3 || den / (sw * sw) < 0.004) return [sd / sw, 0];
+      const b = (sw * sud - su * sd) / den;
+      return [(sd - b * su) / sw, Math.max(-12, Math.min(12, b))];
+    };
     for (let iter = 0; iter < 4; iter++) {
-      const fit = (arr) => {
-        let sw = 0, su = 0, sd = 0, suu = 0, sud = 0;
-        for (const l of arr) {
-          sw += l.w; su += l.w * l.u; sd += l.w * l.dev; suu += l.w * l.u * l.u; sud += l.w * l.u * l.dev;
-        }
-        const den = sw * suu - su * su;
-        // ต้องมีเส้นกระจายซ้ายขวาพอถึงจะประเมินความล้มได้ ไม่งั้นใช้ค่าเฉลี่ย
-        if (arr.length < 3 || den / (sw * sw) < 0.004) return [sd / sw, 0];
-        const b = (sw * sud - su * sd) / den;
-        return [(sd - b * su) / sw, Math.max(-12, Math.min(12, b))];
-      };
       const tol = iter === 0 ? 3 : 1.2;
       const inl = L.filter((l) => Math.abs(l.dev - (a0 + b0 * l.u)) <= tol);
       if (!inl.length) break;
       [a0, b0] = fit(inl);
     }
-    const used = L.filter((l) => Math.abs(l.dev - (a0 + b0 * l.u)) <= 1.2);
+    const resid = (l) => Math.abs(l.dev - (a0 + b0 * l.u));
+    const used = L.filter((l) => resid(l) <= 1.2);
     const w = used.reduce((p, q) => p + q.w, 0);
-    const mad = used.length ? used.reduce((p, q) => p + Math.abs(q.dev - (a0 + b0 * q.u)) * q.w, 0) / w : 9;
-    return { dev: a0, used, w, mad, n: used.length };
+    const mad = used.length ? used.reduce((p, q) => p + resid(q) * q.w, 0) / w : 9;
+    return { dev: a0, slope: b0, all: L, used, w, mad, n: used.length };
   };
-  const V = famV();
-  const Hh = fam(false);
-  // เลือกกลุ่มเส้นอ้างอิง: แนวตั้งก่อน ถ้ามีพอและสอดคล้องกัน
-  let pick = null;
-  if (V && V.n >= 1 && V.mad < 2.5 && (!Hh || V.w >= Hh.w * 0.25)) pick = { ...V, family: 'v' };
-  else if (Hh && Hh.n >= 2 && Hh.mad < 2) pick = { ...Hh, family: 'h' };
-  else if (V && V.n >= 2) pick = { ...V, family: 'v' };
-  if (!pick) return null;
+  const V = famFit(true);
+  const Hh = famFit(false);
+  const okV = V && V.n >= 1 && V.mad < 2.5;
+  const okH = Hh && Hh.n >= 2 && Hh.mad < 2;
+  // ทั้งสองแนวบอกตรงกัน → ใช้ร่วมกัน (แนวตั้งน้ำหนักมากกว่า) · ขัดกัน → ใช้แนวที่เชื่อถือได้กว่า
+  let dev;
+  let usedV = [];
+  let usedH = [];
+  if (okV && okH && Math.abs(V.dev - Hh.dev) <= 1) {
+    dev = (V.dev * V.w * 1.5 + Hh.dev * Hh.w) / (V.w * 1.5 + Hh.w);
+    usedV = V.used;
+    usedH = Hh.used;
+  } else if (okV && (!okH || V.w * 1.5 >= Hh.w || V.mad <= Hh.mad)) {
+    dev = V.dev;
+    usedV = V.used;
+  } else if (okH) {
+    dev = Hh.dev;
+    usedH = Hh.used;
+  } else if (V && V.n >= 2) {
+    dev = V.dev;
+    usedV = V.used;
+  } else return null;
+  const pick = { used: [...usedV.slice(0, 8), ...usedH.slice(0, 8)] };
+  const unused = [...(V ? V.all : []), ...(Hh ? Hh.all : [])].filter((l) => !pick.used.includes(l)).slice(0, 8);
 
   // ช่วงจริงของเส้น (ไว้วาดให้เห็นว่าใช้เส้นไหนอ้างอิง)
-  const segs = pick.used.slice(0, 8).map((l) => {
+  const seg = (l) => {
     const c = Math.cos(l.th);
     const s = Math.sin(l.th);
     let lo = Infinity;
@@ -343,7 +353,13 @@ export function detectLines(canvas) {
     if (lo === Infinity) return null;
     const p = (u) => [(l.rho * c - u * s) / W, (l.rho * s + u * c) / H];
     return [...p(lo), ...p(hi)];
-  });
-  const fix = -Math.round(pick.dev * 10) / 10;
-  return { fix: Math.abs(fix) < 0.1 ? 0 : fix, family: pick.family, count: pick.n, lines: segs.filter(Boolean) };
+  };
+  const fix = -Math.round(dev * 10) / 10;
+  return {
+    fix: Math.abs(fix) < 0.1 ? 0 : fix,
+    nV: usedV.length,
+    nH: usedH.length,
+    lines: pick.used.map(seg).filter(Boolean), // เส้นที่ใช้อ้างอิง
+    others: unused.map(seg).filter(Boolean), // เส้นที่เห็นแต่ไม่ได้ใช้ (เอียงไม่เข้าพวก)
+  };
 }

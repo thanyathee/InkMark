@@ -12,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -793,7 +793,7 @@ $('#edStraight').addEventListener('click', () => {
   markManual(it);
   refreshGeo();
   if (res?.lines?.length) {
-    ed.ref = { id: it.id, lines: res.lines };
+    ed.ref = { id: it.id, lines: res.lines, others: res.others || [] };
     clearTimeout(ed.refTimer);
     ed.refTimer = setTimeout(() => {
       ed.ref = null;
@@ -801,7 +801,10 @@ $('#edStraight').addEventListener('click', () => {
     }, 4000);
   }
   queueEditorRender();
-  const what = res ? (res.family === 'v' ? `เสา/ขอบแนวตั้ง ${res.count} เส้น` : `ขอบโต๊ะ/พื้น/แนวนอน ${res.count} เส้น`) : 'ทิศทางขอบในรูป';
+  const parts = [];
+  if (res?.nV) parts.push(`แนวตั้ง ${res.nV} เส้น`);
+  if (res?.nH) parts.push(`แนวนอน ${res.nH} เส้น`);
+  const what = res ? parts.join(' + ') : 'ทิศทางขอบในรูป';
   toast(fix ? `📐 หมุนแก้ ${fix > 0 ? '+' : ''}${fix.toFixed(1)}° · อ้างอิง${what}` : `📐 รูปนี้ตรงอยู่แล้ว · อ้างอิง${what}`, 3500);
 });
 
@@ -929,6 +932,19 @@ function drawCrop() {
       const dy = ny * ch - P.cy;
       return [P.cx + P.k * (dx * P.cos + dy * P.sin), P.cy + P.k * (-dx * P.sin + dy * P.cos)];
     };
+    // เส้นที่เห็นแต่ไม่ได้ใช้ (เอียงไม่เข้าพวก เช่น โต๊ะวางเฉียง): เส้นประจางๆ
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    for (const l of ed.ref.others) {
+      const [x1, y1] = fwd(l[0], l[1]);
+      const [x2, y2] = fwd(l[2], l[3]);
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.strokeStyle = '#ffd400';
     ctx.lineWidth = 3;
     ctx.shadowColor = 'rgba(0,0,0,0.6)';
