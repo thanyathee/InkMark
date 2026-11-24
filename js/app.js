@@ -12,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -20,6 +20,7 @@ const DEFAULTS = {
   mode: '4:5',
   size: 1080,
   autoImport: true,
+  straightRef: 'h', // อ้างอิงหลักของตั้งตรงอัตโนมัติ: h แนวนอน / v แนวตั้ง / auto
   prefix: 'ADS',
   global: emptyTone(),
   wm: { on: true, text: '#TISCOFOUNDATION', pos: 'br', size: 'M', color: 'auto', custom: '#ffffff', opacity: 0.9 },
@@ -778,9 +779,11 @@ $('#geoOne').addEventListener('change', () => {
 });
 // ตั้งตรงอัตโนมัติ: หาเส้นตรงยาวในรูป (เสา ผนัง ประตู / โต๊ะ กระเบื้อง) แล้วหมุนให้ตรง
 // วาดเส้นที่ใช้อ้างอิงเป็นสีเหลืองให้เห็นครู่หนึ่ง
-$('#edStraight').addEventListener('click', () => {
+$('#edStraight').addEventListener('click', () => runStraighten());
+function runStraighten() {
   const it = cur();
-  const res = detectLines(it.thumb); // วัดจากรูปขนาด ~720px
+  const pref = S.straightRef || 'h';
+  const res = detectLines(it.thumb, pref); // วัดจากรูปขนาด ~720px
   let fix = res ? res.fix : detectTilt(it.thumb);
   if (fix === null || fix === undefined) {
     toast('ไม่พบเส้นตรงชัดเจน (เสา ผนัง ขอบโต๊ะ) — ใช้ "📏 ลากเส้นอ้างอิง" หรือแถบ "เอียง" แทน', 4000);
@@ -795,7 +798,7 @@ $('#edStraight').addEventListener('click', () => {
   // รอบที่ 2: วัดซ้ำบนรูปที่แก้แล้ว เก็บส่วนที่ยังเหลือ (กรณีเอียง/บิดมาก)
   if (res && (g.v || g.h)) {
     const tmp = renderStraight(it.thumb, it, document.createElement('canvas'), it.thumb.width, it.thumb.height);
-    const r2 = detectLines(tmp);
+    const r2 = detectLines(tmp, pref);
     tmp.width = 0;
     if (r2) {
       g.r = clampN(Math.round((g.r + r2.fix) * 10) / 10, -15, 15);
@@ -829,7 +832,22 @@ $('#edStraight').addEventListener('click', () => {
   if (g.h) done.push(`ซ้าย-ขวาไม่สมดุล → แนวนอน ${sg(g.h)}`);
   if (g.v) done.push(`ตึก/เสาล้ม → แนวตั้ง ${sg(g.v)}`);
   toast(`📐 ${done.length ? done.join(' · ') : 'รูปนี้ตรงอยู่แล้ว'} · อ้างอิง${what}`, 4500);
-});
+}
+// เลือกอ้างอิงหลัก แล้วคำนวณใหม่ทันที
+segment(
+  $('#refSeg'),
+  [
+    { value: 'h', label: 'แนวนอน' },
+    { value: 'v', label: 'แนวตั้ง' },
+    { value: 'auto', label: 'อัตโนมัติ' },
+  ],
+  () => S.straightRef || 'h',
+  (v) => {
+    S.straightRef = v;
+    saveSettings();
+    if (state.editIndex >= 0) runStraighten();
+  },
+);
 
 // ลากเส้นอ้างอิงเอง: ลากตามเสาหรือขอบโต๊ะ 1 เส้น → หมุนให้เส้นนั้นตรง
 $('#edGuide').addEventListener('click', () => {

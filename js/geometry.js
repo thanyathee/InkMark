@@ -182,7 +182,8 @@ export function detectTiltInfo(canvas) {
 // - เส้นแนวตั้งเชื่อถือได้กว่า (และเส้นใกล้กลางภาพเพี้ยนจากมุมกล้องน้อยกว่า)
 // - เส้นแนวนอนใช้เมื่อเอียงไปทางเดียวกันจริง (โต๊ะ/กระเบื้องมักเฉียงตามมุมมอง)
 // คืน { fix (องศาที่ต้องหมุน), family: 'v'|'h', lines: [[x1,y1,x2,y2] สัดส่วน 0..1], count } หรือ null
-export function detectLines(canvas) {
+// prefer: 'h' = ใช้เส้นแนวนอนเป็นหลัก (ขอบป้าย กำแพง โต๊ะ) · 'v' = แนวตั้งเป็นหลัก (เสา ผนัง) · 'auto' = เลือกตามหลักฐาน
+export function detectLines(canvas, prefer = 'auto') {
   const W = canvas.width;
   const H = canvas.height;
   const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
@@ -336,7 +337,21 @@ export function detectLines(canvas) {
   let dev;
   let usedV = [];
   let usedH = [];
-  if (okV && okH && Math.abs(V.dev - Hh.dev) <= 1) {
+  const agree = okV && okH && Math.abs(V.dev - Hh.dev) <= 1;
+  if (prefer === 'h' && Hh && Hh.n >= 1 && Hh.mad < 2) {
+    // แนวนอนเป็นหลัก: ใช้ขอบแนวนอน (แม้มีเส้นเดียว) · เส้นตั้งช่วยได้เฉพาะเมื่อบอกตรงกัน (น้ำหนักน้อย)
+    if (agree) {
+      dev = (Hh.dev * Hh.w + V.dev * V.w * 0.4) / (Hh.w + V.w * 0.4);
+      usedV = V.used;
+    } else dev = Hh.dev;
+    usedH = Hh.used;
+  } else if (prefer === 'v' && okV) {
+    if (agree) {
+      dev = (V.dev * V.w + Hh.dev * Hh.w * 0.4) / (V.w + Hh.w * 0.4);
+      usedH = Hh.used;
+    } else dev = V.dev;
+    usedV = V.used;
+  } else if (agree) {
     dev = (V.dev * V.w * 1.5 + Hh.dev * Hh.w) / (V.w * 1.5 + Hh.w);
     usedV = V.used;
     usedH = Hh.used;
@@ -377,7 +392,7 @@ export function detectLines(canvas) {
   // (ดูสูตรใน mapPoint: แกน x ถูกยืดด้วย 1 + a·y/cy, แกน y ด้วย 1 + b·x/cx; a,b = ค่าแถบ/50 × 0.35)
   const rad = Math.PI / 180;
   const sV = okV && usedV.length >= 3 ? V.slope : 0;
-  const sH = okH && usedH.length >= 3 ? Hh.slope : 0;
+  const sH = Hh && usedH.length >= (prefer === 'h' ? 2 : 3) ? Hh.slope : 0;
   const toSlider = (k) => Math.max(-50, Math.min(50, Math.round((k / 0.35) * 50)));
   const pv = toSlider((-sV * rad * H) / (2 * W));
   const ph = toSlider((sH * rad * W) / (2 * H));
