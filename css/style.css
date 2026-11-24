@@ -464,3 +464,5 @@ body:not(.mode-stitch) #stitchBar { display: none !important; }
 .bars-box { border-left-color: var(--primary); }
 .bars-box .switch-row { padding: 4px 0; font-size: 14px; }
 @media (min-width: 1024px) { .stitch-side { flex: 1; max-width: 520px; } }
+.guide-btn { padding: 8px 12px; font-size: 14px; margin: 0 0 8px; }
+.guide-btn.on { background: #ffd400; color: #222; box-shadow: none; }

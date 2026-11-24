@@ -5,14 +5,14 @@ import { makeZip } from './zip.js';
 import { initTrimMode } from './trimmode.js';
 import { initStitchMode } from './stitchmode.js';
 import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas } from './render.js';
-import { GEO_SLIDERS, hasGeom, detectTilt } from './geometry.js';
+import { GEO_SLIDERS, hasGeom, detectTilt, detectLines, geoParams } from './geometry.js';
 
 const $ = (s) => document.querySelector(s);
 const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -707,6 +707,9 @@ function updateEditor() {
   $('#edCropPane').hidden = !frame;
   refreshEdMode();
   refreshGeo();
+  $('#edGuide').hidden = !frame;
+  ed.guide = false;
+  $('#edGuide').classList.remove('on');
   const zoomHow = touchUI ? 'สองนิ้วเพื่อซูม' : 'ลูกกลิ้งเพื่อซูม';
   $('#edCropLabel').textContent =
     mode === 'orig'
@@ -773,20 +776,64 @@ $('#geoOne').addEventListener('change', () => {
   ed.interacting = false;
   queueEditorRender();
 });
+// ตั้งตรงอัตโนมัติ: หาเส้นตรงยาวในรูป (เสา ผนัง ประตู / โต๊ะ กระเบื้อง) แล้วหมุนให้ตรง
+// วาดเส้นที่ใช้อ้างอิงเป็นสีเหลืองให้เห็นครู่หนึ่ง
 $('#edStraight').addEventListener('click', () => {
   const it = cur();
-  const tilt = detectTilt(it.thumb); // วัดจากรูปขนาด ~720px แม่นที่สุด
-  if (tilt === null) {
-    toast('ไม่พบเส้นตรงชัดเจนในรูปนี้ ลองปรับเองด้วยแถบ "เอียง"');
+  const res = detectLines(it.thumb); // วัดจากรูปขนาด ~720px
+  let fix = res ? res.fix : detectTilt(it.thumb);
+  if (fix === null || fix === undefined) {
+    toast('ไม่พบเส้นตรงชัดเจน (เสา ผนัง ขอบโต๊ะ) — ใช้ "📏 ลากเส้นอ้างอิง" หรือแถบ "เอียง" แทน', 4000);
     return;
   }
-  geoOf(it).r = tilt;
+  fix = clampN(fix, -15, 15);
+  const g = geoOf(it);
+  g.r = fix;
   ed.geoKey = 'r';
   markManual(it);
   refreshGeo();
+  if (res?.lines?.length) {
+    ed.ref = { id: it.id, lines: res.lines };
+    clearTimeout(ed.refTimer);
+    ed.refTimer = setTimeout(() => {
+      ed.ref = null;
+      queueEditorRender();
+    }, 4000);
+  }
   queueEditorRender();
-  toast(tilt ? `📐 หมุนแก้ ${tilt > 0 ? '+' : ''}${tilt.toFixed(1)}°` : '📐 รูปนี้ตรงอยู่แล้ว');
+  const what = res ? (res.family === 'v' ? `เสา/ขอบแนวตั้ง ${res.count} เส้น` : `ขอบโต๊ะ/พื้น/แนวนอน ${res.count} เส้น`) : 'ทิศทางขอบในรูป';
+  toast(fix ? `📐 หมุนแก้ ${fix > 0 ? '+' : ''}${fix.toFixed(1)}° · อ้างอิง${what}` : `📐 รูปนี้ตรงอยู่แล้ว · อ้างอิง${what}`, 3500);
 });
+
+// ลากเส้นอ้างอิงเอง: ลากตามเสาหรือขอบโต๊ะ 1 เส้น → หมุนให้เส้นนั้นตรง
+$('#edGuide').addEventListener('click', () => {
+  ed.guide = !ed.guide;
+  ed.guideLine = null;
+  $('#edGuide').classList.toggle('on', ed.guide);
+  if (ed.guide) toast('ลากนิ้วตามเสา ผนัง หรือขอบโต๊ะในรูปเต็ม 1 เส้น', 3500);
+  queueEditorRender();
+});
+function applyGuide(l) {
+  let dx = l[2] - l[0];
+  let dy = l[3] - l[1];
+  if (Math.hypot(dx, dy) < 30) return toast('เส้นสั้นไป ลากให้ยาวตามเสาหรือขอบโต๊ะ');
+  let dev;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx < 0) [dx, dy] = [-dx, -dy];
+    dev = (Math.atan2(dy, dx) * 180) / Math.PI; // เส้นแนวนอน
+  } else {
+    if (dy < 0) [dx, dy] = [-dx, -dy];
+    dev = (-Math.atan2(dx, dy) * 180) / Math.PI; // เส้นแนวตั้ง
+  }
+  if (Math.abs(dev) > 20) return toast('เส้นเอียงเกิน 20° ลากใหม่ตามเสาหรือขอบโต๊ะ');
+  const it = cur();
+  const g = geoOf(it);
+  g.r = clampN(Math.round(((g.r || 0) - dev) * 10) / 10, -15, 15);
+  ed.geoKey = 'r';
+  markManual(it);
+  refreshGeo();
+  toast(`📏 ปรับตามเส้นที่ลาก → เอียง ${g.r > 0 ? '+' : ''}${g.r.toFixed(1)}°`);
+}
 $('#edGeoReset').addEventListener('click', () => {
   cur().geo = { r: 0, v: 0, h: 0 };
   markManual(cur());
@@ -874,7 +921,39 @@ function drawCrop() {
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 2;
   ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-  if (ed.showGrid) {
+  // เส้นที่ใช้อ้างอิงตอนตั้งตรงอัตโนมัติ (แปลงจากรูปเดิมไปยังรูปที่หมุนแล้ว)
+  if (ed.ref && ed.ref.id === it.id && !it.geo?.v && !it.geo?.h) {
+    const P = geoParams(it.geo || {}, cw, ch);
+    const fwd = (nx, ny) => {
+      const dx = nx * cw - P.cx;
+      const dy = ny * ch - P.cy;
+      return [P.cx + P.k * (dx * P.cos + dy * P.sin), P.cy + P.k * (-dx * P.sin + dy * P.cos)];
+    };
+    ctx.strokeStyle = '#ffd400';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 3;
+    ctx.beginPath();
+    for (const l of ed.ref.lines) {
+      const [x1, y1] = fwd(l[0], l[1]);
+      const [x2, y2] = fwd(l[2], l[3]);
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  if (ed.guideLine) {
+    ctx.strokeStyle = '#ffd400';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 6]);
+    ctx.beginPath();
+    ctx.moveTo(ed.guideLine[0], ed.guideLine[1]);
+    ctx.lineTo(ed.guideLine[2], ed.guideLine[3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (ed.showGrid || ed.guide) {
     // ตารางละเอียดช่วยเล็งเส้นตรงตอนหมุน
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1;
@@ -927,12 +1006,25 @@ function beginGesture() {
   ed.crop.classList.add('dragging');
 }
 ed.crop.addEventListener('pointerdown', (e) => {
+  if (ed.guide) {
+    const b = ed.crop.getBoundingClientRect();
+    ed.crop.setPointerCapture(e.pointerId);
+    ed.guideStart = [e.clientX - b.left, e.clientY - b.top];
+    ed.guideLine = [...ed.guideStart, ...ed.guideStart];
+    return;
+  }
   if (!canFrame(modeFor(cur()))) return;
   ed.crop.setPointerCapture(e.pointerId);
   ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   beginGesture();
 });
 ed.crop.addEventListener('pointermove', (e) => {
+  if (ed.guide && ed.guideStart) {
+    const b = ed.crop.getBoundingClientRect();
+    ed.guideLine = [...ed.guideStart, e.clientX - b.left, e.clientY - b.top];
+    queueEditorRender();
+    return;
+  }
   if (!ed.ptrs.has(e.pointerId)) return;
   ed.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const it = cur();
@@ -951,6 +1043,16 @@ ed.crop.addEventListener('pointermove', (e) => {
   queueEditorRender();
 });
 function endGesture(e) {
+  if (ed.guide && ed.guideStart) {
+    const l = ed.guideLine;
+    ed.guideStart = null;
+    ed.guideLine = null;
+    ed.guide = false;
+    $('#edGuide').classList.remove('on');
+    applyGuide(l);
+    queueEditorRender();
+    return;
+  }
   if (!ed.ptrs.delete(e.pointerId)) return;
   if (ed.ptrs.size) return beginGesture();
   ed.interacting = false;
