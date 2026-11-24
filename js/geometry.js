@@ -328,9 +328,11 @@ export function detectLines(canvas) {
   };
   const V = famFit(true);
   const Hh = famFit(false);
-  const okV = V && V.n >= 1 && V.mad < 2.5;
+  // เส้นแนวตั้งเส้นเดียว (เช่น เสาธง ซึ่งอาจปักเอียง) ไม่พอจะตัดสิน ต้องมีอย่างน้อย 2 เส้นที่บอกตรงกัน
+  const okV = V && V.n >= 2 && V.mad < 2.5;
   const okH = Hh && Hh.n >= 2 && Hh.mad < 2;
-  // ทั้งสองแนวบอกตรงกัน → ใช้ร่วมกัน (แนวตั้งน้ำหนักมากกว่า) · ขัดกัน → ใช้แนวที่เชื่อถือได้กว่า
+  // ทั้งสองแนวบอกตรงกัน → ใช้ร่วมกัน (แนวตั้งน้ำหนักมากกว่า)
+  // ขัดกัน → ฝั่งที่มีหลักฐานมากกว่า (ความยาวรวมของเส้น) ชนะ โดยแนวตั้งได้แต้มต่อ 1.5 เท่า
   let dev;
   let usedV = [];
   let usedH = [];
@@ -338,14 +340,14 @@ export function detectLines(canvas) {
     dev = (V.dev * V.w * 1.5 + Hh.dev * Hh.w) / (V.w * 1.5 + Hh.w);
     usedV = V.used;
     usedH = Hh.used;
-  } else if (okV && (!okH || V.w * 1.5 >= Hh.w || V.mad <= Hh.mad)) {
+  } else if (okV && (!okH || V.w * 1.5 >= Hh.w)) {
     dev = V.dev;
     usedV = V.used;
   } else if (okH) {
     dev = Hh.dev;
     usedH = Hh.used;
-  } else if (V && V.n >= 2) {
-    dev = V.dev;
+  } else if (V && V.n >= 1) {
+    dev = V.dev; // มีแค่เส้นตั้งเส้นเดียวจริงๆ — ใช้ แต่บอกผู้ใช้ว่าอ้างอิงเส้นเดียว
     usedV = V.used;
   } else return null;
   const pick = { used: [...usedV.slice(0, 8), ...usedH.slice(0, 8)] };
@@ -386,5 +388,9 @@ export function detectLines(canvas) {
     nH: usedH.length,
     lines: pick.used.map(seg).filter(Boolean), // เส้นที่ใช้อ้างอิง
     others: unused.map(seg).filter(Boolean), // เส้นที่เห็นแต่ไม่ได้ใช้ (เอียงไม่เข้าพวก)
+    dbg: {
+      V: V && { dev: +V.dev.toFixed(2), n: V.n, mad: +V.mad.toFixed(2), w: V.w },
+      H: Hh && { dev: +Hh.dev.toFixed(2), n: Hh.n, mad: +Hh.mad.toFixed(2), w: Hh.w },
+    },
   };
 }

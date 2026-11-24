@@ -12,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.6';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -804,6 +804,9 @@ $('#edStraight').addEventListener('click', () => {
       fix = g.r;
     }
   }
+  // ค่าเล็กมากเป็นแค่สัญญาณรบกวน ไม่ต้องบิดภาพ
+  if (Math.abs(g.v) < 4) g.v = 0;
+  if (Math.abs(g.h) < 4) g.h = 0;
   ed.geoKey = 'r';
   markManual(it);
   refreshGeo();
