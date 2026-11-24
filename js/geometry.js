@@ -48,6 +48,22 @@ export function geoParams(geo, sw, sh) {
   return p;
 }
 
+// จุดในรูปเดิม → จุดในรูปที่ปรับตรงแล้ว (ย้อน mapPoint ด้วยการวนประมาณค่า)
+export function invertPoint(p, sx, sy) {
+  const dx0 = sx - p.cx;
+  const dy0 = sy - p.cy;
+  let gx = p.cx + p.k * (dx0 * p.cos + dy0 * p.sin);
+  let gy = p.cy + p.k * (-dx0 * p.sin + dy0 * p.cos);
+  for (let i = 0; i < 8; i++) {
+    const [mx, my] = mapPoint(p, gx, gy);
+    const ex = sx - mx;
+    const ey = sy - my;
+    gx += p.k * (ex * p.cos + ey * p.sin);
+    gy += p.k * (-ex * p.sin + ey * p.cos);
+  }
+  return [gx, gy];
+}
+
 export function mapPoint(p, x, y, k = p.k) {
   const px = (x - p.cx) / k;
   const py = (y - p.cy) / k;
@@ -355,8 +371,17 @@ export function detectLines(canvas) {
     return [...p(lo), ...p(hi)];
   };
   const fix = -Math.round(dev * 10) / 10;
+  // ความไม่สมดุลจากมุมกล้อง: ความชันของการล้ม (องศาต่อระยะจากกลาง) → ค่าแถบ แนวตั้ง/แนวนอน
+  // (ดูสูตรใน mapPoint: แกน x ถูกยืดด้วย 1 + a·y/cy, แกน y ด้วย 1 + b·x/cx; a,b = ค่าแถบ/50 × 0.35)
+  const rad = Math.PI / 180;
+  const sV = okV && usedV.length >= 3 ? V.slope : 0;
+  const sH = okH && usedH.length >= 3 ? Hh.slope : 0;
+  const toSlider = (k) => Math.max(-50, Math.min(50, Math.round((k / 0.35) * 50)));
+  const pv = toSlider((-sV * rad * H) / (2 * W));
+  const ph = toSlider((sH * rad * W) / (2 * H));
   return {
     fix: Math.abs(fix) < 0.1 ? 0 : fix,
+    persp: { v: Math.abs(pv) >= 3 ? pv : 0, h: Math.abs(ph) >= 3 ? ph : 0 },
     nV: usedV.length,
     nH: usedH.length,
     lines: pick.used.map(seg).filter(Boolean), // เส้นที่ใช้อ้างอิง

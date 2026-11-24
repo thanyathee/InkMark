@@ -5,14 +5,14 @@ import { makeZip } from './zip.js';
 import { initTrimMode } from './trimmode.js';
 import { initStitchMode } from './stitchmode.js';
 import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas } from './render.js';
-import { GEO_SLIDERS, hasGeom, detectTilt, detectLines, geoParams } from './geometry.js';
+import { GEO_SLIDERS, hasGeom, detectTilt, detectLines, geoParams, invertPoint } from './geometry.js';
 
 const $ = (s) => document.querySelector(s);
 const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -789,6 +789,21 @@ $('#edStraight').addEventListener('click', () => {
   fix = clampN(fix, -15, 15);
   const g = geoOf(it);
   g.r = fix;
+  // แก้ความไม่สมดุล (ฝั่งกว้าง/ฝั่งแคบ, ตึกล้ม) จากการที่เส้นบีบเข้าหากัน
+  g.v = res?.persp?.v || 0;
+  g.h = res?.persp?.h || 0;
+  // รอบที่ 2: วัดซ้ำบนรูปที่แก้แล้ว เก็บส่วนที่ยังเหลือ (กรณีเอียง/บิดมาก)
+  if (res && (g.v || g.h)) {
+    const tmp = renderStraight(it.thumb, it, document.createElement('canvas'), it.thumb.width, it.thumb.height);
+    const r2 = detectLines(tmp);
+    tmp.width = 0;
+    if (r2) {
+      g.r = clampN(Math.round((g.r + r2.fix) * 10) / 10, -15, 15);
+      g.v = clampN(g.v + r2.persp.v, -50, 50);
+      g.h = clampN(g.h + r2.persp.h, -50, 50);
+      fix = g.r;
+    }
+  }
   ed.geoKey = 'r';
   markManual(it);
   refreshGeo();
@@ -805,7 +820,12 @@ $('#edStraight').addEventListener('click', () => {
   if (res?.nV) parts.push(`แนวตั้ง ${res.nV} เส้น`);
   if (res?.nH) parts.push(`แนวนอน ${res.nH} เส้น`);
   const what = res ? parts.join(' + ') : 'ทิศทางขอบในรูป';
-  toast(fix ? `📐 หมุนแก้ ${fix > 0 ? '+' : ''}${fix.toFixed(1)}° · อ้างอิง${what}` : `📐 รูปนี้ตรงอยู่แล้ว · อ้างอิง${what}`, 3500);
+  const sg = (v) => (v > 0 ? `+${v}` : `${v}`);
+  const done = [];
+  if (fix) done.push(`หมุนแก้ ${fix > 0 ? '+' : ''}${fix.toFixed(1)}°`);
+  if (g.h) done.push(`ซ้าย-ขวาไม่สมดุล → แนวนอน ${sg(g.h)}`);
+  if (g.v) done.push(`ตึก/เสาล้ม → แนวตั้ง ${sg(g.v)}`);
+  toast(`📐 ${done.length ? done.join(' · ') : 'รูปนี้ตรงอยู่แล้ว'} · อ้างอิง${what}`, 4500);
 });
 
 // ลากเส้นอ้างอิงเอง: ลากตามเสาหรือขอบโต๊ะ 1 เส้น → หมุนให้เส้นนั้นตรง
@@ -925,13 +945,9 @@ function drawCrop() {
   ctx.lineWidth = 2;
   ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
   // เส้นที่ใช้อ้างอิงตอนตั้งตรงอัตโนมัติ (แปลงจากรูปเดิมไปยังรูปที่หมุนแล้ว)
-  if (ed.ref && ed.ref.id === it.id && !it.geo?.v && !it.geo?.h) {
+  if (ed.ref && ed.ref.id === it.id) {
     const P = geoParams(it.geo || {}, cw, ch);
-    const fwd = (nx, ny) => {
-      const dx = nx * cw - P.cx;
-      const dy = ny * ch - P.cy;
-      return [P.cx + P.k * (dx * P.cos + dy * P.sin), P.cy + P.k * (-dx * P.sin + dy * P.cos)];
-    };
+    const fwd = (nx, ny) => invertPoint(P, nx * cw, ny * ch);
     // เส้นที่เห็นแต่ไม่ได้ใช้ (เอียงไม่เข้าพวก เช่น โต๊ะวางเฉียง): เส้นประจางๆ
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.lineWidth = 2;
