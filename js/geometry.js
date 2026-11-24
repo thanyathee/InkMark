@@ -391,7 +391,28 @@ export function detectLines(canvas, prefer = 'auto') {
   // ความไม่สมดุลจากมุมกล้อง: ความชันของการล้ม (องศาต่อระยะจากกลาง) → ค่าแถบ แนวตั้ง/แนวนอน
   // (ดูสูตรใน mapPoint: แกน x ถูกยืดด้วย 1 + a·y/cy, แกน y ด้วย 1 + b·x/cx; a,b = ค่าแถบ/50 × 0.35)
   const rad = Math.PI / 180;
-  const sV = okV && usedV.length >= 3 ? V.slope : 0;
+  // เส้นตั้งล้มออกข้าง (ถ่ายก้ม/เงยด้วยเลนส์กว้าง): รู้ค่าเอียงจริงแล้ว (dev) ส่วนที่เส้นตั้งยังเอียงเหลือ
+  // = มุมกล้อง ซึ่งโตตามระยะจากกลางภาพ → ฟิตความชันโดยตรึงจุดกลางไว้ที่ dev (ใช้ได้แม้มีแค่ 2 เส้น หรืออยู่ฝั่งเดียว)
+  let sV = okV && usedV.length >= 3 ? V.slope : 0;
+  const VL = info.filter((l) => l.vert && Math.abs(l.u) > 0.08);
+  if (VL.length >= 2) {
+    let set = VL;
+    let k = 0;
+    for (let iter = 0; iter < 3 && set.length >= 2; iter++) {
+      let num = 0;
+      let den = 0;
+      for (const l of set) {
+        num += l.w * l.u * (l.dev - dev);
+        den += l.w * l.u * l.u;
+      }
+      k = num / den;
+      set = VL.filter((l) => Math.abs(l.dev - dev - k * l.u) <= 1.2);
+    }
+    if (set.length >= 2 && Math.abs(k) <= 25) {
+      sV = k;
+      for (const l of set) if (!pick.used.includes(l)) pick.used.push(l);
+    }
+  }
   const sH = Hh && usedH.length >= (prefer === 'h' ? 2 : 3) ? Hh.slope : 0;
   const toSlider = (k) => Math.max(-50, Math.min(50, Math.round((k / 0.35) * 50)));
   const pv = toSlider((-sV * rad * H) / (2 * W));
@@ -402,10 +423,11 @@ export function detectLines(canvas, prefer = 'auto') {
     nV: usedV.length,
     nH: usedH.length,
     lines: pick.used.map(seg).filter(Boolean), // เส้นที่ใช้อ้างอิง
-    others: unused.map(seg).filter(Boolean), // เส้นที่เห็นแต่ไม่ได้ใช้ (เอียงไม่เข้าพวก)
+    others: unused.filter((l) => !pick.used.includes(l)).map(seg).filter(Boolean), // เส้นที่เห็นแต่ไม่ได้ใช้ (เอียงไม่เข้าพวก)
     dbg: {
       V: V && { dev: +V.dev.toFixed(2), n: V.n, mad: +V.mad.toFixed(2), w: V.w },
       H: Hh && { dev: +Hh.dev.toFixed(2), n: Hh.n, mad: +Hh.mad.toFixed(2), w: Hh.w },
+      vl: info.filter((l) => l.vert).map((l) => [+l.u.toFixed(2), +l.dev.toFixed(2), l.v]),
     },
   };
 }

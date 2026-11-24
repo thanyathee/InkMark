@@ -12,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.7';
+const APP_VERSION = '3.8';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -783,8 +783,18 @@ $('#edStraight').addEventListener('click', () => runStraighten());
 function runStraighten() {
   const it = cur();
   const pref = S.straightRef || 'h';
-  const res = detectLines(it.thumb, pref); // วัดจากรูปขนาด ~720px
+  // วิเคราะห์ที่ ~1200px: เส้นบางๆ เช่น เสาธง ขอบเสาปูน จะหาเจอ (รูปย่อ 720px มักหาไม่เจอ)
+  const src = ed.work && ed.workId === it.id ? ed.work : it.thumb;
+  const sc = Math.min(1, 1200 / Math.max(src.width, src.height));
+  const an = document.createElement('canvas');
+  an.width = Math.round(src.width * sc);
+  an.height = Math.round(src.height * sc);
+  const actx = an.getContext('2d', { willReadFrequently: true });
+  actx.imageSmoothingQuality = 'high';
+  actx.drawImage(src, 0, 0, an.width, an.height);
+  const res = detectLines(an, pref);
   let fix = res ? res.fix : detectTilt(it.thumb);
+  if (!res) an.width = 0;
   if (fix === null || fix === undefined) {
     toast('ไม่พบเส้นตรงชัดเจน (เสา ผนัง ขอบโต๊ะ) — ใช้ "📏 ลากเส้นอ้างอิง" หรือแถบ "เอียง" แทน', 4000);
     return;
@@ -797,7 +807,7 @@ function runStraighten() {
   g.h = res?.persp?.h || 0;
   // รอบที่ 2: วัดซ้ำบนรูปที่แก้แล้ว เก็บส่วนที่ยังเหลือ (กรณีเอียง/บิดมาก)
   if (res && (g.v || g.h)) {
-    const tmp = renderStraight(it.thumb, it, document.createElement('canvas'), it.thumb.width, it.thumb.height);
+    const tmp = renderStraight(an, it, document.createElement('canvas'), an.width, an.height);
     const r2 = detectLines(tmp, pref);
     tmp.width = 0;
     if (r2) {
@@ -807,6 +817,7 @@ function runStraighten() {
       fix = g.r;
     }
   }
+  an.width = 0;
   // ค่าเล็กมากเป็นแค่สัญญาณรบกวน ไม่ต้องบิดภาพ
   if (Math.abs(g.v) < 4) g.v = 0;
   if (Math.abs(g.h) < 4) g.h = 0;
