@@ -1,7 +1,7 @@
 // โหมดต่อภาพ: ต่อภาพแคปหน้าจอหลายภาพเป็นภาพยาวภาพเดียว (แทนแอป Tailor)
 // เรียงจากบนลงล่างตามลำดับที่เลือก (สลับลำดับได้) · หาส่วนซ้อนอัตโนมัติ · ปรับรอยต่อเองได้
 // บันทึกเป็น PNG ความละเอียดเต็ม ชื่อ = ชื่อภาพแรก_stitch.png
-import { loadImage, toBlob } from './render.js';
+import { loadImage, toBlob, ensureDecodable } from './render.js';
 import { makeSig, matchPair, detectBars, isDuplicate, bestOrder } from './stitch.js';
 
 const $ = (s) => document.querySelector(s);
@@ -23,7 +23,13 @@ export function initStitchMode(h) {
     for (let i = 0; i < files.length; i++) {
       h.progress('กำลังโหลดภาพ', i, files.length);
       await h.nextFrame();
-      const f = files[i];
+      let f = files[i];
+      try {
+        f = await ensureDecodable(f); // HEIC → JPEG ถ้าเบราว์เซอร์เปิดเองไม่ได้
+      } catch {
+        h.toast('แปลงไฟล์ HEIC ไม่สำเร็จ — ครั้งแรกต้องต่ออินเทอร์เน็ตเพื่อโหลดตัวแปลง', 5000);
+        continue;
+      }
       const url = URL.createObjectURL(f);
       try {
         const img = await loadImage(url);

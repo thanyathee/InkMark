@@ -1,9 +1,19 @@
 // อ่าน "วันที่ถ่าย" จากข้อมูล EXIF ในไฟล์ JPEG → 'YYYYMMDD' หรือ null ถ้าไม่มี
 export async function readShotDate(file) {
   try {
-    const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+    const buf = await file.slice(0, 1024 * 1024).arrayBuffer();
     const v = new DataView(buf);
-    if (v.getUint16(0) !== 0xffd8) return null;
+    if (v.getUint16(0) !== 0xffd8) {
+      // HEIC/อื่นๆ: หาบล็อก "Exif\0\0" แล้วอ่าน TIFF ที่ตามมา
+      const b = new Uint8Array(buf);
+      for (let i = 0; i + 10 < b.length; i++) {
+        if (b[i] === 0x45 && b[i + 1] === 0x78 && b[i + 2] === 0x69 && b[i + 3] === 0x66 && b[i + 4] === 0 && b[i + 5] === 0) {
+          const t = i + 6;
+          if ((b[t] === 0x49 && b[t + 1] === 0x49) || (b[t] === 0x4d && b[t + 1] === 0x4d)) return parseTiff(v, t);
+        }
+      }
+      return null;
+    }
     let p = 2;
     while (p + 4 < v.byteLength) {
       const marker = v.getUint16(p);

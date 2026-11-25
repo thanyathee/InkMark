@@ -1,6 +1,6 @@
 // โหมดตัดขอบ: ตัดขอบดำ/ขาวของภาพแคปหน้าจออย่างเดียว
 // ไม่ใส่ลายน้ำ ไม่ปรับสี ไม่ย่อขนาด · บันทึกจากไฟล์ต้นฉบับ (PNG คงเป็น PNG) · ชื่อไฟล์ = ชื่อเดิม_crop
-import { loadImage, loadOriginal, toBlob } from './render.js';
+import { loadImage, loadOriginal, toBlob, ensureDecodable } from './render.js';
 import { detectBorders } from './trim.js';
 
 const $ = (s) => document.querySelector(s);
@@ -69,7 +69,13 @@ export function initTrimMode(h) {
     for (let i = 0; i < files.length; i++) {
       h.progress('กำลังโหลดรูป', i, files.length);
       await h.nextFrame();
-      const f = files[i];
+      let f = files[i];
+      try {
+        f = await ensureDecodable(f); // HEIC → JPEG ถ้าเบราว์เซอร์เปิดเองไม่ได้
+      } catch {
+        h.toast('แปลงไฟล์ HEIC ไม่สำเร็จ — ครั้งแรกต้องต่ออินเทอร์เน็ตเพื่อโหลดตัวแปลง', 5000);
+        continue;
+      }
       const url = URL.createObjectURL(f);
       try {
         const img = await loadImage(url);

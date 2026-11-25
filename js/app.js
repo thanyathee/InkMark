@@ -4,7 +4,7 @@ import { WM_COLORS } from './watermark.js';
 import { makeZip } from './zip.js';
 import { initTrimMode } from './trimmode.js';
 import { initStitchMode } from './stitchmode.js';
-import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas } from './render.js';
+import { prepareItem, loadOriginal, renderImage, renderStraight, toBlob, workCanvas, isHeic } from './render.js';
 import { GEO_SLIDERS, hasGeom, detectTilt, detectLines, geoParams, invertPoint } from './geometry.js';
 
 const $ = (s) => document.querySelector(s);
@@ -12,7 +12,7 @@ const PREVIEW_MAX = 520;
 const WORK_MAX = 1800; // ความละเอียดรูปในหน้าแก้ไข
 const JPEG_QUALITY = 0.92;
 const STORE_KEY = 'inkmark.settings.v1';
-const APP_VERSION = '3.9';
+const APP_VERSION = '4.0';
 // จอคอม: แผงเครื่องมือด้านขวาเปิดค้าง (ต้องตรงกับ media query ใน style.css)
 const desktop = window.matchMedia('(min-width: 1024px)');
 
@@ -86,21 +86,24 @@ async function addFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
   if (!files.length) return;
   const failed = [];
+  let heicFail = 0;
   for (let i = 0; i < files.length; i++) {
-    progress('กำลังโหลดรูป', i, files.length);
+    progress(isHeic(files[i]) ? 'กำลังโหลดรูป (แปลง HEIC)' : 'กำลังโหลดรูป', i, files.length);
     await nextFrame();
     try {
       const it = await prepareItem(files[i]);
       if (state.settings.autoImport) applyAuto(it);
       state.items.push(it);
-    } catch {
+    } catch (e) {
       failed.push(files[i].name);
+      if (e?.message === 'heic') heicFail++;
     }
   }
   progressDone();
   invalidateExport();
   rebuildGrid();
-  if (failed.length) toast(`เปิดไม่ได้ ${failed.length} รูป: ${failed.slice(0, 3).join(', ')}`, 4000);
+  if (heicFail) toast(`แปลงไฟล์ HEIC ไม่สำเร็จ ${heicFail} รูป — ครั้งแรกต้องต่ออินเทอร์เน็ตเพื่อโหลดตัวแปลง`, 5000);
+  else if (failed.length) toast(`เปิดไม่ได้ ${failed.length} รูป: ${failed.slice(0, 3).join(', ')}`, 4000);
 }
 
 // ปุ่ม "+ เพิ่มรูป" ด้านบน / ลากวาง: ส่งให้โหมดที่เปิดอยู่

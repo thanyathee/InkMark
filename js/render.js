@@ -141,8 +141,57 @@ export function renderStraight(src, item, into, W, H) {
 }
 
 // แปลงไฟล์เป็นรายการรูป: เก็บต้นฉบับย่อ (JPEG) + รูปย่อสำหรับพรีวิว + ผลวิเคราะห์แสง + วันที่ถ่าย
+// ---------- ไฟล์ HEIC (รูปจาก iPhone) ----------
+// Safari เปิดเองได้ · Chrome/Edge บน Windows เปิดไม่ได้ → แปลงเป็น JPEG ในเครื่อง
+// ตัวแปลงโหลดจาก jsdelivr เฉพาะครั้งแรกที่ต้องใช้ (ระบบออฟไลน์เก็บไว้ใช้ครั้งต่อไป) · รูปไม่ถูกอัปโหลดไปไหน
+export const isHeic = (f) => /image\/hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name || '');
+let heicTo = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('script'));
+    document.head.append(s);
+  });
+}
+async function heicToJpeg(file) {
+  try {
+    heicTo ||= await import('https://cdn.jsdelivr.net/npm/heic-to@1/+esm');
+    const out = await heicTo.heicTo({ blob: file, type: 'image/jpeg', quality: 0.95 });
+    if (out && out.size) return out;
+  } catch {
+    /* ลองตัวแปลงสำรอง */
+  }
+  if (!window.heic2any) await loadScript('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+  const out = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.95 });
+  return Array.isArray(out) ? out[0] : out;
+}
+// คืนไฟล์ที่เบราว์เซอร์เปิดได้ (HEIC ที่เปิดไม่ได้ → JPEG ชื่อเดิม)
+export async function ensureDecodable(file) {
+  if (!isHeic(file)) return file;
+  const url = URL.createObjectURL(file);
+  try {
+    await loadImage(url);
+    return file; // เปิดเองได้ (Safari)
+  } catch {
+    /* แปลง */
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  let blob;
+  try {
+    blob = await heicToJpeg(file);
+  } catch {
+    throw new Error('heic');
+  }
+  return new File([blob], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg', lastModified: file.lastModified });
+}
+
 // opts.trim: ตัดขอบดำอัตโนมัติ (ภาพแคปหน้าจอ)
-export async function prepareItem(file, opts = {}) {
+export async function prepareItem(file0, opts = {}) {
+  const date = await readShotDate(file0); // อ่านจากไฟล์เดิม (HEIC ก็อ่านได้)
+  const file = await ensureDecodable(file0);
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
@@ -155,7 +204,7 @@ export async function prepareItem(file, opts = {}) {
     const thumb = scaledCanvas(full, full.width, full.height, THUMB_MAX);
     const item = {
       id: nextId++,
-      name: file.name || `photo-${nextId}.jpg`,
+      name: file0.name || `photo-${nextId}.jpg`,
       file, // ไฟล์ต้นฉบับ ใช้ตอนบันทึกโหมด "ต้นฉบับ" ให้ได้ขนาดเดิมเต็มๆ
       blob,
       w: full.width,
@@ -163,7 +212,7 @@ export async function prepareItem(file, opts = {}) {
       thumb,
       trim, // กรอบที่ตัดขอบแล้ว (สัดส่วนของต้นฉบับ) หรือ null
       stats: analyzeAuto(thumb),
-      date: await readShotDate(file), // 'YYYYMMDD' หรือ null
+      date, // 'YYYYMMDD' หรือ null
       fx: 0.5,
       fy: 0.5,
       zoom: 1,
